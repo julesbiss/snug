@@ -683,6 +683,86 @@ async function makeReal() {
   btn.blur();
 }
 $('#realBtn').onclick = makeReal;
+
+/* ================= PDF: shopping list and assembly notice, with clickable links ================= */
+let PDFLIB = null;
+function loadPdfLib() {
+  if (window.jspdf) return Promise.resolve(window.jspdf);
+  return PDFLIB || (PDFLIB = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.onload = () => res(window.jspdf); sc.onerror = () => { PDFLIB = null; rej(new Error('pdf')); }; document.head.appendChild(sc); }));
+}
+// the PDF's built-in fonts only know Latin-1 characters
+const pdfTxt = (t) => String(t ?? '').replace(/[  ]/g, ' ').replace(/≈/g, 'env.').replace(/[→↗]/g, '->').replace(/←/g, '<-').replace(/[’‘]/g, "'").replace(/[“”]/g, '"')
+  .replace(/€/g, 'EUR').replace(/œ/g, 'oe').replace(/Œ/g, 'OE').replace(/…/g, '...').replace(/[–—]/g, '-').replace(/Å/g, 'A').replace(/å/g, 'a').replace(/[^\x00-\xFF]/g, '');
+async function makePdf(kind) {
+  const p = currentProp(), cu = S.custom[S.active]; if (!p || !cu) return;
+  toast('Préparation du PDF…');
+  let lib; try { lib = await loadPdfLib(); } catch { toast('Connexion nécessaire pour créer le PDF.'); return; }
+  const doc = new lib.jsPDF({ unit: 'mm', format: 'a4' }), PW = 210, M = 16, CW = PW - 2 * M; let y = M;
+  const ink = [21, 23, 26], mute = [110, 114, 122], gold = [176, 120, 40];
+  const need = (h) => { if (y + h > 297 - M) { doc.addPage(); y = M; } };
+  const text = (t, size, opt = {}) => { doc.setFont('helvetica', opt.bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...(opt.color || ink));
+    const lines = doc.splitTextToSize(pdfTxt(t), opt.w || CW); const lh = size * .42; need(lines.length * lh); doc.text(lines, opt.x || M, y + lh * .8); y += lines.length * lh + (opt.after ?? 1.5); };
+  const rule = () => { need(4); doc.setDrawColor(220, 222, 226); doc.line(M, y, PW - M, y); y += 4; };
+  const N = noticeFor(p, cu), lines = linesFor(S.active), total = lines.reduce((a, l) => a + l.prix, 0);
+  const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
+  // cover
+  text('SNUG', 9, { bold: true, color: gold, after: 1 });
+  text(`${projectName()} · version ${p.nom}`, 20, { bold: true, after: 2 });
+  text(`${new Date().toLocaleDateString('fr-FR')} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`, 10, { color: mute, after: 4 });
+  try { const img = productShot(); if (img) { const h = CW * 372 / 496; need(h); doc.addImage('data:image/jpeg;base64,' + img, 'JPEG', M, y, CW, h); y += h + 4; } } catch {}
+  text(`Prix estimé : ${eur(total)} · Durée : ${p.duree || '-'} · Difficulté : ${['Facile', 'Moyen', 'Avancé'][clamp(Math.round(+p.difficulte || 2), 1, 3) - 1]}`, 11, { bold: true, after: 2 });
+  if (p.resume) text(p.resume, 10, { after: 2 });
+  if (p.attention) text('Attention : ' + p.attention, 9.5, { color: [150, 80, 10], after: 2 });
+  if (kind !== 'notice') {
+    if (kind === 'all') { doc.addPage(); y = M; } else { y += 4; }
+    text('Liste de courses', 16, { bold: true, after: 1 });
+    text('Touchez « Ouvrir chez … » pour voir le produit. Prix estimés, à vérifier.', 9, { color: mute, after: 4 });
+    lines.forEach((l) => {
+      const art = doc.splitTextToSize(pdfTxt(`${l.qte} × ${l.article}`), CW - 30); need(art.length * 4.6 + 12);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...ink); doc.text(art, M, y + 4);
+      doc.setFont('helvetica', 'normal'); doc.text(pdfTxt(eur(l.prix)), PW - M, y + 4, { align: 'right' }); y += art.length * 4.6;
+      doc.setFontSize(9); doc.setTextColor(...mute); doc.text(pdfTxt([l.enseigne, l.detail].filter(Boolean).join(' · ')).slice(0, 110), M, y + 3.5); y += 4.6;
+      doc.setTextColor(...gold); doc.textWithLink(pdfTxt(`Ouvrir chez ${l.enseigne || 'le vendeur'} ->`), M, y + 3.5, { url: shopUrl(l.enseigne, l.recherche) }); y += 6.5;
+      doc.setDrawColor(235, 236, 239); doc.line(M, y, PW - M, y); y += 3;
+    });
+    need(10); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...ink); doc.text('Total estimé', M, y + 5); doc.text(pdfTxt(eur(total)), PW - M, y + 5, { align: 'right' }); y += 10;
+  }
+  if (kind !== 'list') {
+    doc.addPage(); y = M;
+    text('Notice de montage', 16, { bold: true, after: 3 });
+    text('Pièces', 12, { bold: true, after: 1 });
+    N.parts.forEach((x) => text(`${x.code}  ${x.nom} — ${x.dims}`, 9.5, { after: .6 }));
+    y += 3; text('Quincaillerie', 12, { bold: true, after: 1 });
+    Object.keys(N.hw).sort().forEach((c) => text(`${c}  ${hwName(c, cu)} — ${N.hw[c]}`, 9.5, { after: .6 }));
+    y += 3; text('Outils', 12, { bold: true, after: 1 }); text(N.tools.join(', '), 9.5, { after: 4 });
+    const keep = S.nstep;
+    N.steps.forEach((st, i) => {
+      doc.addPage(); y = M;
+      text(`Étape ${i + 1} sur ${N.steps.length}`, 9, { color: gold, bold: true, after: 1 });
+      text(st.title, 15, { bold: true, after: 3 });
+      try { S.nstep = i; renderStep(); const im = $('#stepCv').toDataURL('image/jpeg', .86); const h = CW * 480 / 720; need(h); doc.addImage(im, 'JPEG', M, y, CW, h); y += h + 4; } catch {}
+      if (st.news.length) text('Pièces : ' + st.news.map((c) => { const q = N.parts.find((x) => x.code === c); return q ? `${c} ${q.nom}` : c; }).join(', '), 9.5, { color: mute });
+      if (st.hw.length) text('Quincaillerie : ' + st.hw.map(([c, q]) => `${q} × ${c} (${hwName(c, cu)})`).join(', '), 9.5, { color: mute });
+      if (st.tools.length) text('Outils : ' + st.tools.join(', '), 9.5, { color: mute, after: 3 });
+      st.text.forEach((t, k) => text(`${k + 1}. ${t}`, 11, { after: 2 }));
+      st.links.forEach((l) => { need(6); doc.setFontSize(10); doc.setTextColor(...gold); doc.textWithLink(pdfTxt(l.label + ' ->'), M, y + 4, { url: l.url }); y += 6; });
+    });
+    S.nstep = keep; if (S.pane === 'notice') renderNotice();
+  }
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(...mute); doc.text(pdfTxt(`SNUG · ${projectName()} · ${i}/${pages}`), PW - M, 297 - 8, { align: 'right' }); }
+  const name = `SNUG ${projectName()} ${p.nom} - ${kind === 'list' ? 'liste de courses' : kind === 'notice' ? 'notice' : 'dossier'}.pdf`.replace(/[\/\\:]/g, '-');
+  const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
+  // on a phone, the share sheet offers "Save to Files"; elsewhere the file is downloaded
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  toast('PDF enregistré');
+}
+$('#pdfList').onclick = () => makePdf('list');
+$('#pdfNotice').onclick = () => makePdf('notice');
+$('#pdfAll').onclick = () => makePdf('all');
 // Result screen: the 3D view scrolls away with the page; a small button in the sticky bar brings it back.
 $('#to3d').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 window.addEventListener('scroll', () => {
@@ -942,11 +1022,12 @@ function noticeFor(p, cu) {
 function currentProp() { return S.active >= 0 ? S.result[S.active] : null; }
 const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: (+n % 1) ? 2 : 0 });
 function shopUrl(enseigne, q) {
-  const e = (enseigne || '').toLowerCase(), qq = encodeURIComponent(q || '');
-  if (e.includes('ikea')) return 'https://www.ikea.com/fr/fr/search/?q=' + qq;
-  if (e.includes('leroy')) return 'https://www.leroymerlin.fr/resultats/?q=' + qq;
-  if (e.includes('casto')) return 'https://www.castorama.fr/search?term=' + qq;
-  return 'https://www.google.com/search?q=' + encodeURIComponent(`${enseigne || ''} ${q || ''}`.trim());
+  // The shops' own search pages often answer "no result" to precise queries (sizes, references):
+  // a Google search limited to the shop's site always lands on the matching product pages.
+  const e = (enseigne || '').toLowerCase();
+  const site = e.includes('ikea') ? 'ikea.com/fr' : e.includes('leroy') ? 'leroymerlin.fr' : e.includes('casto') ? 'castorama.fr' : e.includes('but') ? 'but.fr' : '';
+  const words = String(q || '').replace(/IKEA |Leroy Merlin |Castorama /g, '').trim();
+  return 'https://www.google.com/search?q=' + encodeURIComponent(site ? `${words} site:${site}` : `${enseigne || ''} ${words}`.trim());
 }
 function hwName(c, cu) { if (c === 'H') { const h = handleById(cu.poignee); return `Poignée ${h.nom}, ${hfinById(cu.hfin).nom.toLowerCase()}`; } if (c === 'I') return `Pied ${feetById(cu.pieds).nom.toLowerCase()}`; return (HW[c] || {}).nom || c; }
 /* Materials bought by the sheet or by the board: estimated from the parts of the notice, so they follow the plan and the finishes */

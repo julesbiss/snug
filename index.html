@@ -127,6 +127,7 @@
             <p class="small soft" id="pDetails" hidden></p>
             <div class="warnbox" id="pWarn" hidden></div>
             <div class="card promo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4"/></svg><div><b>Pas envie de monter&nbsp;?</b><p class="muted small">Bientôt : un monteur près de chez vous reçoit le plan et la liste exacte.</p></div></div>
+            <button class="btn primary" id="pdfAll"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Télécharger le dossier complet (PDF)</button>
             <button class="btn ghost" id="newBtn">Commencer un nouveau projet</button>
           </section>
           <section class="pane" data-pane="matieres" hidden><div class="col"><h2>Matières et couleurs</h2>
@@ -139,11 +140,11 @@
           <section class="pane" data-pane="poignees" hidden><div class="col"><h2>Poignées</h2>
             <div class="grp"><p class="glab">Modèle <span id="lab-handle"></span></p><div class="chips" id="hcats"></div><div class="hgrid" id="hgrid"></div></div>
             <div class="grp"><p class="glab">Finition <span id="lab-hfin"></span></p><div class="sw" data-group="hfin"></div></div></div></section>
-          <section class="pane" data-pane="liste" hidden><div class="col"><div class="rowb"><h2>Liste de courses</h2><button class="btn ghost sm" id="copyBtn">Copier</button></div>
+          <section class="pane" data-pane="liste" hidden><div class="col"><div class="rowb"><h2>Liste de courses</h2><div class="hbtns"><button class="btn ghost sm" id="copyBtn">Copier</button><button class="btn primary sm" id="pdfList"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>PDF</button></div></div>
             <div class="tablewrap"><table><thead><tr><th>Qté</th><th>Article</th><th class="n">Prix est.</th></tr></thead><tbody id="pList"></tbody><tfoot><tr><td></td><td>Total estimé</td><td class="n" id="pTotal"></td></tr></tfoot></table></div>
             <p class="muted small">Chaque lien ouvre la recherche du produit sur le site de l'enseigne. Prix estimés, à vérifier.</p></div></section>
           <section class="pane" data-pane="notice" hidden><div class="col" id="noticeBox">
-            <h2>Notice de montage</h2>
+            <div class="rowb"><h2>Notice de montage</h2><button class="btn primary sm" id="pdfNotice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>PDF</button></div>
             <div class="seg four" id="nTabs" role="group" aria-label="Notice"><button type="button" data-tab="steps">Étapes</button><button type="button" data-tab="parts">Pièces</button><button type="button" data-tab="hw">Quincaillerie</button><button type="button" data-tab="tools">Outils</button></div>
             <div class="col" id="nSteps" style="gap:12px">
               <div class="stephead"><b id="sTitle"></b><span class="mono muted small" id="sCount"></span></div>
