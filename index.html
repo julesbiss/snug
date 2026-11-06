@@ -37,9 +37,10 @@
       <div><label class="btn primary" for="photoIn">Prendre ou choisir une photo</label>
         <input class="sr" id="photoIn" type="file" accept="image/*" capture="environment"></div>
       <div class="grid2" id="projects"></div>
-      <div class="col" style="gap:6px">
-        <label class="lbl" for="needs">Ce qu'il faut ranger ou loger</label>
-        <textarea id="needs">Une platine vinyle sur le dessus, un ampli, une box internet, une enceinte, 4 caisses de vin en guise de tiroirs. Le robot aspirateur doit pouvoir passer dessous.</textarea>
+      <div class="col" style="gap:10px">
+        <div><h2 id="itemsTitle">À ranger</h2><p class="muted small" style="margin-top:4px">Dites ce qu'il faut loger : chaque objet reçoit une case à sa taille.</p></div>
+        <div class="items" id="itemList"></div>
+        <div class="col" id="itemOpts" style="gap:12px"></div>
       </div>
     </div>
   </section>
@@ -52,10 +53,6 @@
       <p class="small muted" id="zoneHint"></p>
       <div class="col" id="zoneList" style="gap:10px"></div>
       <p class="warnbox" id="zoneErr" hidden></p>
-      <div class="col" style="gap:6px">
-        <label class="lbl" for="obst">Contraintes (prises, plinthes, objets à respecter)</label>
-        <textarea id="obst">Prises à 50 mm du sol, au centre. Les pieds de la TV sont écartés de 1070 mm.</textarea>
-      </div>
       <div class="hint"><span aria-hidden="true">⚠</span><span>Mesurez chaque largeur en haut, au milieu et en bas, et gardez la plus petite valeur.</span></div>
     </div>
   </section>
@@ -67,18 +64,13 @@
       <div class="col" style="gap:10px"><h2>Votre niveau</h2><div class="grid3" id="levels"></div></div>
       <div class="col" style="gap:10px"><h2>Vos outils</h2><div class="chips" id="tools"></div><p class="muted small">Sans scie, les découpes sont prévues en magasin.</p></div>
       <div class="col" style="gap:10px"><h2>Vos enseignes</h2><div class="chips" id="shops"></div></div>
-      <div class="col" style="gap:10px"><label class="lbl" for="style">Matière et style</label><input id="style" type="text" value="Bois massif, aspect naturel"></div>
+      <div class="col" style="gap:10px"><h2>Style</h2><div class="grid2" id="ambiances"></div><p class="muted small">Vous pourrez changer chaque matière et chaque couleur ensuite.</p></div>
     </div>
   </section>
 
   <section data-step="3" hidden>
     <div class="col">
       <div><p class="eyebrow">Étape 4 sur 4</p><h1 id="resTitle">Vos 3 propositions</h1></div>
-      <div class="card" id="progBox" hidden>
-        <div class="rowb"><h2 id="progTitle">Conception de vos meubles</h2><button class="btn ghost sm" id="stopBtn">Arrêter</button></div>
-        <div class="col" id="progRows" style="gap:12px"></div>
-        <p class="muted small">Les trois meubles sont conçus en même temps et s'affichent dès qu'ils sont prêts.</p>
-      </div>
       <div class="warnbox" id="errBox" hidden></div>
       <div class="col" id="result" hidden>
         <div class="cfgtop" id="cfgTop">
@@ -101,7 +93,7 @@
             <button class="btn ghost" id="newBtn">Commencer un nouveau projet</button>
           </section>
           <section class="pane" data-pane="matieres" hidden><div class="card"><h2>Matières et couleurs</h2><div class="grp"><p class="glab">Structure <span id="lab-structure"></span></p><div class="sw" data-group="structure"></div></div><div class="grp"><p class="glab">Portes, tiroirs et façades <span id="lab-facades"></span></p><div class="sw" data-group="facades"></div></div><div class="grp"><p class="glab">Plateau <span id="lab-plateau"></span></p><div class="sw" data-group="plateau"></div></div></div></section>
-          <section class="pane" data-pane="pieds" hidden><div class="card"><h2>Pieds et socle</h2><div class="grp" id="grpFeet"><p class="glab">Pieds et socle <span id="lab-feet"></span></p><div class="hgrid" id="fgrid"></div><p class="warnbox" id="feetWarn" hidden></p></div><p class="muted small" id="noFeet" hidden>Ce meuble est fixé au mur : il n’a pas de pieds.</p></div></section>
+          <section class="pane" data-pane="pieds" hidden><div class="card"><h2>Pieds et socle</h2><div class="grp" id="grpFeet"><p class="glab">Pieds et socle <span id="lab-feet"></span></p><div class="hgrid" id="fgrid"></div><p class="warnbox" id="feetWarn" hidden></p></div><p class="muted small" id="noFeet" hidden>Ce meuble est fixé au mur ou posé directement au sol : il n’a pas de pieds.</p></div></section>
           <section class="pane" data-pane="poignees" hidden><div class="card"><h2>Poignées</h2><div class="grp"><p class="glab">Poignées <span id="lab-handle"></span></p><div class="chips" id="hcats"></div><div class="hgrid" id="hgrid"></div></div><div class="grp"><p class="glab">Finition des poignées <span id="lab-hfin"></span></p><div class="sw" data-group="hfin"></div></div></div></section>
           <section class="pane" data-pane="liste" hidden><div class="card"><div class="rowb"><h2>Liste de courses</h2><button class="btn ghost sm" id="copyBtn">Copier</button></div>
           <div class="tablewrap"><table><thead><tr><th>Qté</th><th>Article</th><th class="n">Prix est.</th></tr></thead><tbody id="pList"></tbody><tfoot><tr><td></td><td>Total estimé</td><td class="n" id="pTotal"></td></tr></tfoot></table></div>
@@ -138,6 +130,7 @@
 <div class="toast" id="toast" hidden role="status"></div>
 <div class="bar"><div class="in"><button class="btn ghost" id="backBtn">Retour</button><button class="btn primary" id="nextBtn">Continuer</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="engine.js"></script>
 <script src="app.js"></script>
 <script>if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 </body>

@@ -74,6 +74,7 @@ const HW = {
   K: { nom: 'Fixation anti-basculement', rech: 'fixation anti basculement meuble', pack: 2, pp: 6, unit: 'lot de 2' },
   P: { nom: 'Patins feutre adhésifs', rech: 'patin feutre adhésif', pack: 16, pp: 4, unit: 'lot de 16' },
   V: { nom: 'Vis de jonction de caissons', rech: 'vis de jonction meuble', pack: 10, pp: 5, unit: 'lot de 10' },
+  T: { nom: 'Tringle de penderie ovale 1,5 m avec 2 supports', rech: 'tringle penderie ovale 150 cm supports', pack: 1, pp: 15, unit: 'kit' },
   W: { nom: 'Vérin de réglage pour plinthe', rech: 'vérin réglable meuble plinthe', pack: 4, pp: 8, unit: 'lot de 4' }};
 const finById = (id) => FIN.find((f) => f.id === id) || FIN[4];
 const hfinById = (id) => HFIN.find((f) => f.id === id) || HFIN[0];
@@ -90,7 +91,6 @@ const VARIANTS = [
   { nom: 'Équilibrée', desc: 'le meilleur compromis entre prix, rangement et finitions' },
   { nom: 'Optimale', desc: "l'espace exploité au centimètre, plus de sur-mesure et de beaux matériaux" }];
 const TYPES = ['ouvert', 'porte', 'tiroir', 'caisse', 'abattant'];
-const DENIED = ['not_granted', 'sampling_disabled', 'capability_disabled', 'not_declared', 'capability_removed', 'not_configured'];
 const DEFZ = { x: .1, y: .42, w: .8, h: .4, A: 2450, B: 620, C: 440, D: 0 };
 const STORE_KEY = 'atelier.projets.v1';
 
@@ -98,8 +98,8 @@ const S = {
   step: 0, photo: null, photoData: null, example: true, project: 'tv', fab: 'mixte',
   zones: [{ ...DEFZ }], sel: 0, redraw: null,
   level: 'bricoleur', tools: new Set(['Visseuse', 'Perceuse', 'Niveau']), shops: new Set(['IKEA', 'Leroy Merlin', 'Castorama', 'Autoriser le mélange']),
-  result: [null, null, null], gen: [], rows: [], custom: [null, null, null], active: -1, genZones: null,
-  view: '3d', hcat: 'Toutes', demo: false, sample: undefined, ticker: null, images: undefined,
+  result: [null, null, null], custom: [null, null, null], active: -1, genZones: null, itemsBy: {}, ambiance: 'bois',
+  view: '3d', hcat: 'Toutes',
   hits: [], keys2d: [], anim2d: false, pane: 'modele', ntab: 'steps', nstep: 0, notice: null, projId: null, projName: '' };
 
 /* ================= textures and lighting ================= */
@@ -302,11 +302,13 @@ function chipButtons(el, list, set) {
   });
 }
 function renderOptions() {
-  optButtons($('#projects'), PROJECTS, (id) => S.project === id, (id) => { S.project = id; });
+  optButtons($('#projects'), PROJECTS, (id) => S.project === id, (id) => { S.project = id; renderItems(); });
+  optButtons($('#ambiances'), ENG.AMBIANCES, (id) => S.ambiance === id, (id) => { S.ambiance = id; });
   optButtons($('#fabs'), FABS, (id) => S.fab === id, (id) => { S.fab = id; });
   optButtons($('#levels'), LEVELS, (id) => S.level === id, (id) => { S.level = id; });
   chipButtons($('#tools'), TOOLS, S.tools);
   chipButtons($('#shops'), SHOPS, S.shops);
+  renderItems();
 }
 
 /* ================= photo ================= */
@@ -323,7 +325,6 @@ $('#photoIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
   const img = new Image(); img.src = URL.createObjectURL(f);
   S.zones = []; S.sel = 0; S.redraw = null; setPhoto(img, false); renderZones();
-  $('#needs').value = ''; $('#obst').value = '';
 });
 
 /* ================= navigation ================= */
@@ -354,7 +355,7 @@ $('#nextBtn').onclick = () => {
   newProject();
 };
 function newProject() {
-  abortAll(); S.result = [null, null, null]; S.projId = null; S.projName = ''; $('#result').hidden = true; $('#progBox').hidden = true; $('#errBox').hidden = true; S.pane = 'modele'; show(0);
+  S.result = [null, null, null]; S.projId = null; S.projName = ''; $('#result').hidden = true; $('#errBox').hidden = true; S.pane = 'modele'; show(0);
 }
 $('#newBtn').onclick = newProject;
 
@@ -373,7 +374,7 @@ function layoutModule(m, z) {
   let x = t;
   cols.forEach((c, ci) => {
     const cw = innerW * pos(c && c.largeur_mm, 1) / sumW;
-    boxes.push({ x0: x - t, x1: x + cw + t, ref: (c && c.ref) || '' });
+    if (!(c && c.vide)) boxes.push({ x0: x - t, x1: x + cw + t, ref: (c && c.ref) || '' });
     const cases = c && Array.isArray(c.cases) && c.cases.length ? c.cases : [{ hauteur_mm: 1, type: 'ouvert' }];
     const innerH = (y1 - y0) - (cases.length - 1) * t;
     const sumH = cases.reduce((s, k) => s + pos(k && k.hauteur_mm, 1), 0);
@@ -381,7 +382,7 @@ function layoutModule(m, z) {
     cases.forEach((k, ri) => {
       const ch = innerH * pos(k && k.hauteur_mm, 1) / sumH;
       const type = TYPES.includes(k && k.type) ? k.type : 'ouvert';
-      cells.push({ x, y, w: cw, h: ch, type, contenu: (k && k.contenu) || '', key: `${ci}-${ri}`, col: ci, ncols: cols.length });
+      cells.push({ x, y, w: cw, h: ch, type, contenu: (k && k.contenu) || '', rod: !!(k && k.tringle), key: `${ci}-${ri}`, col: ci, ncols: cols.length });
       y += ch; if (ri < cases.length - 1) { shelves.push({ x, w: cw, y }); y += t; }
     });
     x += cw; if (ci < cols.length - 1) { dividers.push(x); x += divT; }
@@ -424,192 +425,63 @@ function handleHoles(f, h, D) {
   return vert ? [[cx, cy - h.ent / 2, face], [cx, cy + h.ent / 2, face]] : [[cx - h.ent / 2, cy, face], [cx + h.ent / 2, cy, face]];
 }
 
-/* ================= generation ================= */
+/* ================= what to store (step 1) ================= */
+const ENG = window.SnugEngine;
 function projectName() { return (PROJECTS.find((p) => p[0] === S.project) || [, 'Meuble'])[1]; }
-function zonesText() {
-  return S.genZones.map((z, i) => `- Zone ${i + 1} : largeur ${pos(z.A)} mm, hauteur ${pos(z.B)} mm, profondeur max ${pos(z.C)} mm, ${num(z.D) > 0 ? `fixée au mur, dessous à ${num(z.D)} mm du sol` : 'posée au sol'}.`).join('\n');
+function curItems() { return S.itemsBy[S.project] || (S.itemsBy[S.project] = ENG.defaults(S.project)); }
+function robotWanted() { return !!num(curItems().robot); }
+function renderItems() {
+  const box = $('#itemList'), opts = $('#itemOpts'); box.innerHTML = ''; opts.innerHTML = '';
+  const it = curItems();
+  $('#itemsTitle').textContent = 'À ranger dans ' + ({ tv: 'le meuble TV', dressing: 'le dressing', biblio: 'la bibliothèque', escalier: 'le placard sous l’escalier', bureau: 'le bureau', autre: 'le meuble' }[S.project] || 'le meuble');
+  ENG.itemsOf(S.project).forEach((d) => {
+    if (d.kind === 'flag') {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = d.nom; b.setAttribute('aria-pressed', String(!!num(it[d.id])));
+      b.onclick = () => { it[d.id] = num(it[d.id]) ? 0 : 1; b.setAttribute('aria-pressed', String(!!it[d.id])); }; opts.appendChild(b); return;
+    }
+    if (d.kind === 'choice') {
+      const wrap = document.createElement('div'); wrap.className = 'col'; wrap.style.gap = '8px';
+      const l = document.createElement('p'); l.className = 'lbl'; l.textContent = d.nom; const row = document.createElement('div'); row.className = 'chips';
+      d.options.forEach(([id, name]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip sm cat'; b.textContent = name; b.setAttribute('aria-pressed', String(it[d.id] === id)); b.onclick = () => { it[d.id] = id; renderItems(); }; row.appendChild(b); });
+      wrap.append(l, row); opts.appendChild(wrap); return;
+    }
+    if (d.kind === 'number') {
+      if (d.when && !d.when(it)) return;
+      const row = document.createElement('div'); row.className = 'cote'; const id = 'opt_' + d.id;
+      row.innerHTML = `<span class="k">↘</span><label for="${id}"></label><span class="u"><input id="${id}" type="number" inputmode="numeric" min="0"><span class="muted small">mm</span></span>`;
+      row.querySelector('label').textContent = d.nom; const inp = row.querySelector('input'); inp.value = it[d.id]; inp.oninput = () => { it[d.id] = inp.value; };
+      opts.appendChild(row); return;
+    }
+    const row = document.createElement('div'); row.className = 'item'; const n = clamp(num(it[d.id]), 0, d.max || (d.kind === 'top' ? 1 : 20));
+    row.innerHTML = '<div class="itxt"><b></b><span></span></div><div class="stepper"><button type="button" aria-label="Moins">−</button><output></output><button type="button" aria-label="Plus">+</button></div>';
+    row.querySelector('b').textContent = d.nom; row.querySelector('span').textContent = d.hint || '';
+    const out = row.querySelector('output'), [minus, plus] = row.querySelectorAll('button');
+    const upd = () => { const v = num(it[d.id]); out.textContent = d.kind === 'top' ? (v ? 'Oui' : 'Non') : String(v); minus.disabled = v <= 0; plus.disabled = v >= (d.max || 20); row.classList.toggle('on', v > 0); };
+    minus.onclick = () => { it[d.id] = Math.max(0, num(it[d.id]) - 1); upd(); };
+    plus.onclick = () => { it[d.id] = Math.min(d.max || 20, num(it[d.id]) + 1); upd(); };
+    it[d.id] = n; upd(); box.appendChild(row);
+  });
+  opts.hidden = !opts.children.length;
 }
-function fabRule() {
-  if (S.fab === 'standard') return "Fabrication : un maximum de meubles et caissons VENDUS TOUT FAITS par ces enseignes (exemples : IKEA BESTÅ, KALLAX, EKET, METOD, PLATSA ; Leroy Merlin, Castorama, But : caissons bas, meubles bas, étagères cubes). Chaque colonne est un caisson du commerce : donne son nom exact dans \"ref\" et mets \"fabrication\":\"caissons\". Aucune découpe, ou seulement le plateau.";
-  if (S.fab === 'mixte') return "Fabrication : caissons du commerce pour la structure (nom exact dans \"ref\" pour chaque colonne, \"fabrication\":\"caissons\"), plateau et finitions sur mesure si utile.";
-  return "Fabrication : panneaux découpés aux cotes exactes (\"fabrication\":\"panneaux\"), sans caissons du commerce.";
-}
-function buildPrompt(i, withImage) {
-  const v = VARIANTS[i]; const lvl = (LEVELS.find((l) => l[0] === S.level) || [, 'Bricoleur'])[1];
-  return `Tu es concepteur de meubles sur mesure pour particuliers, en France. Conçois UNE proposition de "${projectName()}" : la version "${v.nom}", c'est-à-dire ${v.desc}.
-${withImage ? "La photo jointe montre l'espace ; les zones numérotées sont celles que l'utilisateur a dessinées." : ''}
-Zones mesurées (chaque zone = un module ; ensemble, elles forment un seul agencement) :
-${zonesText()}
-À loger : ${$('#needs').value || 'non précisé'}.
-Contraintes : ${$('#obst').value || 'aucune'}.
-Niveau : ${lvl}. Outils : ${[...S.tools].join(', ') || 'aucun'}. Enseignes acceptées : ${[...S.shops].join(', ') || 'toutes'}. Style souhaité : ${$('#style').value || 'libre'}.
-${fabRule()}
 
-Règles :
-- Un module par zone, avec "zone" = son numéro. Chaque module laisse 10 à 20 mm de jeu en largeur et ne dépasse jamais les cotes de sa zone. Un module posé au sol a des pieds de 80 à 150 mm.
-- Façade vue de face : "colonnes" de gauche à droite (somme des largeurs = largeur du module) ; dans chaque colonne, "cases" de bas en haut (somme des hauteurs + pieds + épaisseur du plateau = hauteur du module). Type de case : "ouvert", "porte", "tiroir", "caisse" (bac ou caisse posée qui se tire) ou "abattant". "contenu" en 1 à 3 mots.
-- Chaque proposition a au moins 2 façades (portes, tiroirs, caisses ou abattants).
-- "details" : passe-câbles là où passent des câbles (TV, box, prises), aérations derrière les appareils qui chauffent, et "fixation_murale" pour éviter le basculement. x_mm depuis le bord gauche du module ; y_mm depuis le bas du module (face "arriere") ou depuis le bord arrière (face "plateau").
-- La liste ne contient que les panneaux, plans de travail, caissons et façades du commerce : l'application ajoute elle-même la quincaillerie (vis, charnières, coulisses, équerres, pieds, poignées, passe-câbles, fixations) et les finitions.
-- "recherche" : 3 à 8 mots à taper dans le moteur de recherche du site de l'enseigne pour trouver ce produit précis.
-- Prix réalistes en euros TTC ; "prix" = prix total de la ligne.
-- "finitions" : choisis parmi ces identifiants. Bois et couleurs : ${FIN.map((f) => f.id).join(', ')}. Poignées : ${HANDLES.map((h) => h.id).join(', ')}. Finition des poignées : ${HFIN.map((f) => f.id).join(', ')}. Pieds : ${FEET.map((f) => f.id).join(', ')}.
-
-Réponds UNIQUEMENT avec ce JSON :
-{"nom":"${v.nom}","resume":"1 phrase","duree":"une journée","difficulte":2,"enseignes":["IKEA"],
-"finitions":{"structure":"blanc","facades":"chene","plateau":"chene","poignee":"barre_fine","finition_poignee":"noir","pieds":"carre_bois"},
-"modules":[{"zone":1,"fabrication":"caissons","largeur_mm":2420,"hauteur_mm":620,"profondeur_mm":440,"pieds_mm":110,"epaisseur_plateau_mm":26,
-"colonnes":[{"largeur_mm":600,"ref":"IKEA BESTÅ caisson 60 x 40 x 38 cm","cases":[{"hauteur_mm":280,"type":"porte","contenu":"ampli"},{"hauteur_mm":180,"type":"tiroir","contenu":"câbles"}]}],
-"details":[{"type":"passe_cable","face":"arriere","x_mm":1210,"y_mm":300,"diametre_mm":60},{"type":"aeration","face":"arriere","x_mm":300,"y_mm":300,"largeur_mm":200,"hauteur_mm":60},{"type":"fixation_murale"}]}],
-"liste":[{"qte":4,"article":"IKEA BESTÅ caisson blanc 60 x 40 x 38 cm","enseigne":"IKEA","recherche":"BESTÅ caisson 60x40x38","detail":"","prix":140}],
-"attention":""}
-difficulte : 1 facile, 2 moyen, 3 avancé.`;
-}
-function normalizeProp(d, i) {
-  let p = d && Array.isArray(d.propositions) ? d.propositions[0] : d;
-  if (!p || typeof p !== 'object') return null;
-  if (!Array.isArray(p.modules)) p.modules = p.plan ? [p.plan] : [];
-  if (!p.modules.length) return null;
-  p.nom = VARIANTS[i].nom; p.liste = Array.isArray(p.liste) ? p.liste : [];
-  return p;
-}
+/* ================= design: the rules engine computes the three proposals on the phone ================= */
 function initCustom(i) {
   const f = (S.result[i] && S.result[i].finitions) || {}; const ok = (list, id, d) => list.some((x) => x.id === id) ? id : d;
   S.custom[i] = { structure: ok(FIN, f.structure, 'pin'), facades: ok(FIN, f.facades, 'chene'), plateau: ok(FIN, f.plateau, 'chene'),
     poignee: ok(HANDLES, f.poignee, 'barre_fine'), hfin: ok(HFIN, f.finition_poignee, 'noir'), pieds: ok(FEET, f.pieds, 'carre_bois') };
 }
-function codeCopy(code) {
-  if (code === 'not_configured') return "Le serveur n'est pas encore relié à Claude (clé API manquante). Voici un exemple de résultat pour tester le parcours.";
-  if (code === 'bad_code') return "Code d'accès manquant ou incorrect. Saisissez le code de test que l'on vous a donné.";
-  if (DENIED.includes(code)) return "La conception par Claude n'est pas autorisée sur cette page. Voici un exemple de résultat pour tester le parcours.";
-  if (code === 'rate_limited') return 'Trop de demandes pour le moment. Réessayez dans quelques minutes.';
-  if (code === 'invalid_json' || code === 'empty_completion') return "Une réponse n'a pas pu être lue. Relancez ce meuble.";
-  if (code === 'refused') return 'Cette demande a été refusée. Modifiez la description puis relancez.';
-  if (code === 'session_expired') return 'Reconnectez-vous à Claude, puis relancez.';
-  if (code === 'images_unavailable' || code === 'image_rejected') return "La photo n'a pas pu être envoyée. Relancez ce meuble.";
-  return 'Un meuble a été interrompu. Relancez-le.';
-}
-/* Calls Claude through the app's own server (api/generate). Same shape as the prototype's sampler:
-   json(prompt, {signal, images, onText}) streams the answer and resolves with the parsed JSON. */
-const ACCESS_KEY = 'snug.code';
-function readCode() { try { return localStorage.getItem(ACCESS_KEY) || ''; } catch { return ''; } }
-function blobToBase64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(b); }); }
-function parseLoose(text) {
-  try { return JSON.parse(text); } catch {}
-  const fence = /```(?:json)?\s*([\s\S]*?)```/.exec(text); if (fence) { try { return JSON.parse(fence[1]); } catch {} }
-  const a = text.indexOf('{'), b = text.lastIndexOf('}'); if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch {} }
-  return undefined;
-}
-const API = {
-  async limits() { return { images: { maxCount: 1 } }; },
-  async json(prompt, opts = {}) {
-    let image;
-    if (opts.images) { try { image = await blobToBase64(opts.images); } catch { image = undefined; } }
-    let res;
-    try {
-      res = await fetch('api/generate', { method: 'POST', signal: opts.signal, headers: { 'content-type': 'application/json', 'x-snug-code': readCode() }, body: JSON.stringify({ prompt, image }) });
-    } catch (e) { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'upstream_error' }; }
-    if (!res.ok) { let code = 'upstream_error'; try { code = (await res.json()).code || code; } catch {} if (res.status === 429) code = 'rate_limited'; throw { code }; }
-    const reader = res.body.getReader(), dec = new TextDecoder(); let text = '';
-    try {
-      for (;;) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value, { stream: true }); if (opts.onText && text.trim()) opts.onText({ text }); }
-    } catch (e) { throw { code: e && e.name === 'AbortError' ? 'cancelled' : 'upstream_error', text }; }
-    const data = parseLoose(text); if (data === undefined) throw { code: 'invalid_json', text }; return data;
-  }
-};
-async function getSample() { return API; }
-function exportBlob() {
-  const img = S.photo; const c = document.createElement('canvas'); const W = 1000, H = Math.round(1000 * img.naturalHeight / img.naturalWidth);
-  c.width = W; c.height = H; const g = c.getContext('2d'); g.drawImage(img, 0, 0, W, H); drawZonesOn(g, W, H, S.genZones, -1, true);
-  return new Promise((r) => c.toBlob((b) => r(b), 'image/jpeg', .85));
-}
-const expectedChars = () => 1700 + 800 * Math.max(1, (S.genZones || []).length);
-function pctOf(g) {
-  if (!g) return 0; if (g.status === 'done') return 100; if (!g.start || g.status === 'wait') return 0;
-  const think = 18 * (1 - Math.exp(-((Date.now() - g.start) / 1000) / 18));
-  if (g.status === 'write') return Math.min(97, Math.max(think, 18) + 79 * Math.min(1, g.chars / expectedChars()));
-  if (g.status === 'think') return Math.max(2, think);
-  return g.pctMax || 0;
-}
-const anyRunning = () => S.gen.some((g) => g.status === 'think' || g.status === 'write' || g.status === 'wait');
-function abortAll() { (S.gen || []).forEach((g) => g.ctl && g.ctl.abort()); }
-function buildProgRows() {
-  const box = $('#progRows'); box.innerHTML = '';
-  S.rows = VARIANTS.map((v, i) => {
-    const el = document.createElement('div'); el.className = 'prow';
-    el.innerHTML = '<div class="ptop"><b></b><span class="pst"></span><span class="ppct"></span><button type="button" class="link" hidden>Relancer</button></div><div class="track"><i></i></div>';
-    el.querySelector('b').textContent = v.nom;
-    const row = { el, st: el.querySelector('.pst'), pct: el.querySelector('.ppct'), bar: el.querySelector('.track i'), retry: el.querySelector('.link') };
-    row.retry.onclick = async () => { const sm = await getSample(); if (sm && !S.demo) runOne(sm, i, S.images); };
-    box.appendChild(el); return row;
-  });
-}
-function tick() {
-  S.gen.forEach((g, i) => {
-    g.pctMax = Math.max(g.pctMax || 0, pctOf(g)); const row = S.rows[i]; if (!row) return;
-    const off = g.status === 'error' || g.status === 'stopped';
-    row.pct.textContent = g.status === 'done' ? '100 %' : off ? '' : `≈ ${Math.round(g.pctMax)} %`;
-    row.bar.style.width = (g.status === 'done' ? 100 : g.pctMax) + '%';
-    row.st.textContent = { wait: 'En attente', think: 'Réflexion…', write: 'Dessin du plan…', done: 'Terminé ✓', error: 'Interrompu', stopped: 'Arrêté' }[g.status] || '';
-    row.retry.hidden = !off || S.demo; row.el.dataset.state = g.status;
-  });
-  renderTabs();
-  const running = anyRunning(); const done = S.gen.filter((g) => g.status === 'done').length;
-  $('#stopBtn').hidden = !running;
-  $('#progTitle').textContent = running ? `Conception · ${done}/3 meuble${done > 1 ? 's' : ''} terminé${done > 1 ? 's' : ''}` : (done === 3 ? 'Vos 3 meubles sont prêts' : `${done} meuble${done > 1 ? 's' : ''} sur 3 prêt${done > 1 ? 's' : ''}`);
-  if (!running) { clearInterval(S.ticker); S.ticker = null; if (done === 3) setTimeout(() => { if (!anyRunning()) $('#progBox').hidden = true; }, 1400); }
-}
-function startTicker() { if (!S.ticker) S.ticker = setInterval(tick, 250); tick(); }
-async function generate() {
-  abortAll(); S.demo = false; S.result = [null, null, null]; S.custom = [null, null, null]; S.active = -1; E.framed = false; E.state = {}; S.nstep = 0;
+function abortAll() {}
+function generate() {
+  S.result = [null, null, null]; S.custom = [null, null, null]; S.active = -1; E.framed = false; E.state = {}; S.nstep = 0;
   S.genZones = S.zones.map((z) => ({ ...z }));
-  S.gen = VARIANTS.map(() => ({ status: 'wait', chars: 0, pctMax: 0 }));
-  $('#propTabs').innerHTML = ''; $('#result').hidden = true; $('#errBox').hidden = true; $('#progBox').hidden = false;
-  buildProgRows(); startTicker();
-  const sample = await getSample();
-  if (!sample) { runDemo("La conception par Claude n'est disponible qu'en ouvrant cette page dans Claude. Voici un exemple de résultat pour tester le parcours."); return; }
-  let images; try { const lim = await sample.limits(); if (lim && lim.images) images = await exportBlob(); } catch { images = undefined; }
-  S.images = images;
-  VARIANTS.forEach((v, i) => runOne(sample, i, images));
-}
-async function runOne(sample, i, images) {
-  const g = { status: 'think', start: Date.now(), chars: 0, pctMax: 0, ctl: new AbortController() }; S.gen[i] = g; startTicker();
+  $('#propTabs').innerHTML = ''; $('#errBox').hidden = true;
   try {
-    const data = await sample.json(buildPrompt(i, !!images), { signal: g.ctl.signal, images, cache: false, onText: ({ text }) => { g.status = 'write'; g.chars = text.length; } });
-    if (S.gen[i] !== g) return;
-    const p = normalizeProp(data, i); if (!p) throw { code: 'invalid_json' };
-    S.result[i] = p; initCustom(i); g.status = 'done';
-    if (S.active < 0) { S.active = i; E.framed = false; renderResult(); }
+    S.result = ENG.design({ project: S.project, items: curItems(), zones: S.genZones, fab: S.fab, level: S.level, tools: [...S.tools], shops: [...S.shops], ambiance: S.ambiance });
+    S.result.forEach((_, i) => initCustom(i));
+    S.active = 1; renderResult();
   } catch (e) {
-    if (S.gen[i] !== g) return;
-    const code = e && e.code; g.status = code === 'cancelled' ? 'stopped' : 'error';
-    if (DENIED.includes(code) && !S.demo && !S.result.some(Boolean)) { abortAll(); runDemo(codeCopy(code)); return; }
-    if (code === 'bad_code') { askCode(); return; }
-    if (code && code !== 'cancelled') { $('#errBox').textContent = codeCopy(code); $('#errBox').hidden = false; }
-  } finally { if (S.gen[i] === g) tick(); }
-}
-$('#stopBtn').onclick = abortAll;
-function askCode() {
-  if ($('#codeBox')) return; abortAll();
-  const box = document.createElement('div'); box.className = 'card'; box.id = 'codeBox';
-  box.innerHTML = '<label class="lbl" for="codeIn">Code d’accès de test</label><p class="muted small">SNUG est en test privé. Saisissez le code qu’on vous a transmis.</p><div class="rowb"><input id="codeIn" type="text" autocomplete="off"><button class="btn primary sm" id="codeOk">Valider</button></div>';
-  $('#progBox').after(box);
-  $('#codeIn').value = readCode();
-  $('#codeOk').onclick = () => { try { localStorage.setItem(ACCESS_KEY, $('#codeIn').value.trim()); } catch {} box.remove(); generate(); };
-}
-function runDemo(msg) {
-  S.demo = true; $('#errBox').textContent = msg; $('#errBox').hidden = false;
-  S.gen = VARIANTS.map(() => ({ status: 'think', start: Date.now() - 30000, chars: 0, pctMax: 0 }));
-  buildProgRows(); startTicker();
-  const gens = S.gen;
-  gens.forEach((g, i) => setTimeout(() => {
-    if (S.gen !== gens) return; g.status = 'write';
-    const iv = setInterval(() => {
-      if (S.gen !== gens) { clearInterval(iv); return; }
-      g.chars += expectedChars() / 10;
-      if (g.chars >= expectedChars()) { clearInterval(iv); S.result[i] = JSON.parse(JSON.stringify(DEMO[i])); initCustom(i); g.status = 'done'; if (S.active < 0) { S.active = i; E.framed = false; renderResult(); } tick(); }
-    }, 110);
-  }, 300 + i * 500));
+    $('#result').hidden = true; $('#errBox').textContent = 'Impossible de concevoir ce meuble avec ces cotes. Vérifiez la largeur, la hauteur et la profondeur de chaque zone.'; $('#errBox').hidden = false;
+  }
 }
 
 /* ================= notice: parts, hardware, steps (computed from the plan) ================= */
@@ -756,6 +628,14 @@ function noticeFor(p, cu) {
       st({ title: 'Poser les poignées', hw: [['H', fronts.length]], tools: h.shape === 'cut' ? ['Défonceuse'] : ['Perceuse', 'Foret bois 4,5 mm', 'Gabarit de perçage'], extra: legExtra(false),
         markers: holes.map((p_) => ({ p: p_, c: 'H' })), text: dTxt });
     }
+    const rods = L.cells.filter((c) => c.rod);
+    if (rods.length) {
+      H('T', rods.length); H('B', rods.length * 4);
+      st({ title: 'Poser les tringles', hw: [['T', rods.length], ['B', rods.length * 4]], tools: ['Scie à métaux', 'Foret bois 3 mm'], extra: legExtra(false),
+        markers: rods.flatMap((c) => [c.x + 6, c.x + c.w - 6].map((x) => ({ p: [x, c.y + c.h - 60, D / 2], c: 'T' }))),
+        text: [`Recoupez chaque tringle T à la scie à métaux : ${rods.map((c) => `${R0(c.w - 4)} mm`).join(', ')}.`,
+          `Vissez les supports sur les montants, à 60 mm sous le haut de la case et à ${R0(D / 2)} mm du fond, avec 2 vis B chacun.`, 'Posez la tringle dans ses supports, puis vérifiez le niveau.'] });
+    }
     const pcs = L.details.filter((d) => d.type === 'passe_cable'), aer = L.details.filter((d) => d.type === 'aeration');
     if (pcs.length || aer.length) {
       H('J', pcs.length);
@@ -767,12 +647,12 @@ function noticeFor(p, cu) {
     mods.push(mod); partsAll.push(...parts);
     const fins = new Map(); [['structure', 'structure'], ['plateau', 'plateau'], ['facades', 'façades']].forEach(([k, lab]) => { if (!fins.has(cu[k])) fins.set(cu[k], []); fins.get(cu[k]).push(lab); });
     st({ title: 'Finitions', tools: ['Ponceuse ou cale à poncer', 'Papier abrasif grain 180', 'Pinceau ou chiffon'], extra: legExtra(false),
-      text: ['Poncez toutes les faces visibles au grain 180 dans le sens du fil, puis dépoussiérez.'].concat([...fins].map(([id, labs]) => { const f = finById(id); return f.wood ? `${labs.join(', ')} : appliquez l’huile ${f.id === 'pin' || f.id === 'bouleau' ? 'incolore' : 'teintée ' + f.nom.toLowerCase()} en 2 couches, 6 h de séchage entre les deux.` : `${labs.join(', ')} : sous-couche, puis 2 couches de peinture ${f.nom.toLowerCase()}, 4 h de séchage entre les deux.`; })) });
+      text: ['Poncez toutes les faces visibles au grain 180 dans le sens du fil, puis dépoussiérez.'].concat([...fins].map(([id, labs]) => { const f = finById(id); return f.id === 'blanc' ? `${labs.join(', ')} : mélaminé blanc déjà fini, essuyez simplement.` : f.wood ? `${labs.join(', ')} : appliquez l’huile ${f.id === 'pin' || f.id === 'bouleau' ? 'incolore' : 'teintée ' + f.nom.toLowerCase()} en 2 couches, 6 h de séchage entre les deux.` : `${labs.join(', ')} : sous-couche, puis 2 couches de peinture ${f.nom.toLowerCase()}, 4 h de séchage entre les deux.`; })) });
     H('K', 2);
     st({ title: 'Mettre en place et fixer au mur', view: 'back', hw: [['K', 2]], tools: ['Niveau à bulle', 'Perceuse', 'Foret adapté au mur 6 mm', 'Chevilles adaptées au mur'], extra: legExtra(false),
       markers: [[W * .2, L.y1 - 30, 0], [W * .8, L.y1 - 30, 0]].map((p_) => ({ p: p_, c: 'K' })),
       text: [L.raised ? `Tracez au mur la ligne du dessous du meuble à ${R0(num(z.D))} mm du sol, au niveau.` : `Placez le meuble et vérifiez le niveau${hidden ? ' : réglez les vérins' : ''}.`, 'Vissez 2 fixations anti-basculement K en haut du dos, à 20 % et 80 % de la largeur, puis fixez-les au mur avec des chevilles adaptées (placo, brique ou béton).',
-        feet.hidden && /robot|aspirateur/i.test($('#needs').value) ? 'Attention : avec des pieds cachés, le robot aspirateur ne passera plus sous le meuble.' : ''].filter(Boolean) });
+        feet.hidden && robotWanted() ? 'Attention : avec des pieds cachés, le robot aspirateur ne passera plus sous le meuble.' : ''].filter(Boolean) });
   });
   if (multi) steps.push({ mod: null, title: 'Assembler les modules', show: [], news: [], markers: [], hw: [], tools: [], extra: [], text: ['Placez les modules à leur emplacement, dans l’ordre des zones dessinées sur la photo.', 'Contrôlez l’alignement des façades et des plateaux, puis serrez les fixations murales.'] });
   return { steps, parts: partsAll, mods, hw: hwTot, tools: [...tools] };
@@ -789,21 +669,75 @@ function shopUrl(enseigne, q) {
   return 'https://www.google.com/search?q=' + encodeURIComponent(`${enseigne || ''} ${q || ''}`.trim());
 }
 function hwName(c, cu) { if (c === 'H') { const h = handleById(cu.poignee); return `Poignée ${h.nom}, ${hfinById(cu.hfin).nom.toLowerCase()}`; } if (c === 'I') return `Pied ${feetById(cu.pieds).nom.toLowerCase()}`; return (HW[c] || {}).nom || c; }
+/* Materials bought by the sheet or by the board: estimated from the parts of the notice, so they follow the plan and the finishes */
+const SHEETS = {
+  pin: { nom: 'Panneau pin lamellé-collé 18 mm, 250 × 60 cm', rech: 'panneau pin lamellé collé 18 mm 250 x 60', L: 2500, l: 600, prix: 42.9 },
+  chene: { nom: 'Panneau chêne lamellé-collé 18 mm, 250 × 60 cm', rech: 'panneau chêne lamellé collé 18 mm', L: 2500, l: 600, prix: 119 },
+  noyer: { nom: 'Panneau plaqué noyer 19 mm, 250 × 122 cm', rech: 'panneau plaqué noyer 19 mm', L: 2500, l: 1220, prix: 169 },
+  bouleau: { nom: 'Contreplaqué bouleau 18 mm, 250 × 125 cm', rech: 'contreplaqué bouleau 18 mm', L: 2500, l: 1250, prix: 89 },
+  blanc: { nom: 'Panneau mélaminé blanc 18 mm, 250 × 122 cm', rech: 'panneau mélaminé blanc 18 mm 250 x 122', L: 2500, l: 1220, prix: 39 },
+  mdf: { nom: 'Panneau MDF 19 mm à peindre, 250 × 122 cm', rech: 'panneau mdf 19 mm 250 x 122', L: 2500, l: 1220, prix: 45 },
+  ply12: { nom: 'Contreplaqué peuplier 12 mm, 250 × 122 cm', rech: 'contreplaqué peuplier 12 mm', L: 2500, l: 1220, prix: 39 },
+  ply5: { nom: 'Contreplaqué peuplier 5 mm, 250 × 122 cm', rech: 'contreplaqué peuplier 5 mm', L: 2500, l: 1220, prix: 19 },
+};
+const sheetKey = (finId) => ({ pin: 'pin', chene_clair: 'chene', chene: 'chene', chene_fume: 'chene', teck: 'noyer', noyer: 'noyer', bouleau: 'bouleau', blanc: 'blanc' }[finId] || 'mdf');
+function boardFor(finId, th) {
+  const k = sheetKey(finId);
+  if (k === 'pin') return th <= 20 ? SHEETS.pin : { nom: 'Plan de travail pin massif 28 mm, 250 × 65 cm', rech: 'plan de travail pin massif 28 mm', L: 2500, l: 650, prix: 79 };
+  if (k === 'chene') return th <= 28 ? { nom: 'Plan de travail chêne massif 26 mm, 250 × 65 cm', rech: 'plan de travail chêne massif 26 mm 250 x 65', L: 2500, l: 650, prix: 99 }
+    : { nom: 'Plan de travail chêne lamellé 38 mm, 300 × 65 cm', rech: 'plan de travail chêne lamellé 38 mm 300 x 65', L: 3000, l: 650, prix: 329 };
+  if (k === 'noyer') return { nom: 'Plan de travail noyer massif 38 mm, 300 × 65 cm', rech: 'plan de travail noyer massif', L: 3000, l: 650, prix: 389 };
+  if (k === 'bouleau') return SHEETS.bouleau;
+  if (k === 'blanc') return th <= 20 ? SHEETS.blanc : { nom: 'Plan de travail stratifié blanc 38 mm, 300 × 65 cm', rech: 'plan de travail stratifié blanc 38 mm', L: 3000, l: 650, prix: 69 };
+  return th <= 20 ? SHEETS.mdf : { nom: 'Panneau MDF 30 mm à peindre, 250 × 122 cm', rech: 'panneau mdf 30 mm', L: 2500, l: 1220, prix: 79 };
+}
+const faceArea = (b) => { const d = [b[3], b[4], b[5]].sort((x, y) => y - x); return d[0] * d[1] / 1e6; };
+function materialLines(p, cu, N, mg) {
+  const out = [], sheets = new Map();
+  const add = (sh, m2, what) => { const g = sheets.get(sh) || { m2: 0, what: new Set() }; g.m2 += m2; what.forEach((w) => g.what.add(w)); sheets.set(sh, g); };
+  const by = (role) => N.parts.filter((x) => x.role === role);
+  const struct = by('struct'), fronts = by('facade'), boxes = by('tiroirbox'), backs = by('dos');
+  if (struct.length) add(SHEETS[sheetKey(cu.structure)], struct.reduce((a, x) => a + faceArea(x.box), 0), ['structure']);
+  if (fronts.length) {
+    if (p.systeme) { const m2 = fronts.reduce((a, x) => a + faceArea(x.box), 0); out.push({ qte: fronts.length, article: `Façades ${p.systeme.nom} (portes et tiroirs)`, enseigne: p.systeme.shop, recherche: `${p.systeme.nom.replace(/^IKEA\s+/, '')} façade`, detail: 'aux tailles des caissons, à recouper si besoin', prix: Math.max(fronts.length * 15, m2 * p.systeme.front) }); }
+    else add(SHEETS[sheetKey(cu.facades)], fronts.reduce((a, x) => a + faceArea(x.box), 0), ['façades']);
+  }
+  if (boxes.length) add(SHEETS.ply12, boxes.reduce((a, x) => { const [, , , w, h, d] = x.box; return a + (2 * h * d + 2 * w * h + w * d) / 1e6; }, 0), ['caissons de tiroir']);
+  if (backs.length) add(SHEETS.ply5, backs.reduce((a, x) => a + faceArea(x.box), 0), ['dos']);
+  sheets.forEach((g, sh) => { const q = Math.max(1, Math.ceil(g.m2 * 1.2 / (sh.L * sh.l / 1e6)));
+    out.push({ qte: q, article: sh.nom, enseigne: mg, recherche: sh.rech, detail: `${[...g.what].join(', ')} · ${g.m2.toFixed(2).replace('.', ',')} m² + 20 % de chutes`, prix: q * sh.prix }); });
+  const tops = new Map();
+  by('plateau').forEach((x) => { const [, , , w, th, d] = x.box, b = boardFor(cu.plateau, th);
+    const strips = Math.max(1, Math.floor(b.l / Math.max(1, d))), pieces = Math.ceil(w / b.L) * Math.max(1, Math.ceil(d / b.l));
+    const g = tops.get(b.nom) || { b, n: 0, cuts: [] }; g.n += Math.ceil(pieces / strips); g.cuts.push(`${R0(w)} × ${R0(d)} mm`); tops.set(b.nom, g); });
+  tops.forEach(({ b, ...g }) => out.push({ qte: g.n, article: b.nom, enseigne: mg, recherche: b.rech, detail: `plateau recoupé à ${g.cuts.join(', ')}`, prix: g.n * b.prix }));
+  const crates = by('caisse').length;
+  if (crates) out.push({ qte: crates, article: 'Caisse en bois de pin, type caisse à vin', enseigne: mg, recherche: 'caisse bois pin rangement', detail: 'si vous n’en avez pas déjà', prix: crates * 12 });
+  const saw = S.tools.has('Scie circulaire') || S.tools.has('Scie sauteuse');
+  const cuts = struct.length + fronts.length * (p.systeme ? 0 : 1) + boxes.length * 4 + backs.length + by('plateau').length;
+  if ((struct.length || (fronts.length && !p.systeme)) && (!saw || S.level === 'debutant')) out.push({ qte: 1, article: `Découpe des panneaux en magasin (≈ ${cuts} coupes)`, enseigne: mg, recherche: 'service découpe bois', detail: 'tarif indicatif, selon le magasin', prix: cuts });
+  return out;
+}
 function linesFor(i) {
   const p = S.result[i], cu = S.custom[i]; if (!p || !cu) return [];
+  const mg = p.magasin || 'Leroy Merlin';
   const out = p.liste.map((it) => ({ qte: it.qte, article: it.article || '', enseigne: it.enseigne || '', recherche: it.recherche || it.article || '', detail: it.detail || '', prix: num(it.prix) }));
   const N = noticeFor(p, cu), h = handleById(cu.poignee), feet = feetById(cu.pieds);
-  if (N.hw.H && h.prix > 0) out.push({ qte: N.hw.H, article: hwName('H', cu), enseigne: 'Leroy Merlin', recherche: `poignée meuble ${h.nom} ${hfinById(cu.hfin).nom}`, detail: 'votre choix, repère H', prix: N.hw.H * h.prix });
-  if (N.hw.I) out.push({ qte: N.hw.I, article: hwName('I', cu), enseigne: 'Leroy Merlin', recherche: `pied meuble ${feet.nom}`, detail: 'votre choix, repère I', prix: N.hw.I * feet.prix });
-  if (feet.hidden && N.parts.some((x) => x.role === 'plinthe')) out.push({ qte: 1, article: 'Tablette bois 18 mm pour la plinthe', enseigne: 'Leroy Merlin', recherche: 'tablette bois 18 mm 250 x 20', detail: 'découpe en magasin', prix: 15 });
+  out.push(...materialLines(p, cu, N, mg));
+  if (N.hw.H && h.prix > 0) out.push({ qte: N.hw.H, article: hwName('H', cu), enseigne: mg, recherche: `poignée meuble ${h.nom} ${hfinById(cu.hfin).nom}`, detail: 'votre choix, repère H', prix: N.hw.H * h.prix });
+  if (N.hw.I) out.push({ qte: N.hw.I, article: hwName('I', cu), enseigne: mg, recherche: `pied meuble ${feet.nom}`, detail: 'votre choix, repère I', prix: N.hw.I * feet.prix });
+  if (feet.hidden && N.parts.some((x) => x.role === 'plinthe')) out.push({ qte: 1, article: 'Tablette bois 18 mm pour la plinthe', enseigne: mg, recherche: 'tablette bois 18 mm 250 x 20', detail: 'découpe en magasin', prix: 15 });
   Object.keys(HW).forEach((c) => { const q = N.hw[c]; if (!q) return; const it = HW[c]; const packs = Math.ceil(q / it.pack);
-    out.push({ qte: packs, article: `${it.nom}, ${it.unit}`, enseigne: 'Leroy Merlin', recherche: it.rech, detail: `repère ${c} · ${q} nécessaire${q > 1 ? 's' : ''}`, prix: packs * it.pp }); });
-  const used = new Map(); [['structure', 'structure'], ['plateau', 'plateau'], ['facades', 'façades']].forEach(([k, lab]) => { const id = cu[k]; if (!used.has(id)) used.set(id, []); used.get(id).push(lab); });
+    out.push({ qte: packs, article: `${it.nom}, ${it.unit}`, enseigne: mg, recherche: it.rech, detail: `repère ${c} · ${q} nécessaire${q > 1 ? 's' : ''}`, prix: packs * it.pp }); });
+  const allCais = p.modules.every((m) => m.fabrication === 'caissons');
+  const used = new Map(); [['structure', 'structure'], ['plateau', 'plateau'], ['facades', 'façades']].forEach(([k, lab]) => {
+    if (k === 'structure' && allCais) return; if (k === 'facades' && p.systeme) return; if (k === 'facades' && !N.parts.some((x) => x.role === 'facade')) return;
+    const id = cu[k]; if (id === 'blanc') return; if (!used.has(id)) used.set(id, []); used.get(id).push(lab); });
   used.forEach((labs, id) => {
     const f = finById(id), clear = f.id === 'pin' || f.id === 'bouleau';
     out.push(f.wood
-      ? { qte: 1, article: `Huile ${clear ? 'incolore' : 'teintée ' + f.nom.toLowerCase()} pour bois, 0,5 L`, enseigne: 'Leroy Merlin', recherche: `huile bois ${clear ? 'incolore' : 'teintée ' + f.nom}`, detail: labs.join(', '), prix: 22 }
-      : { qte: 1, article: `Peinture spéciale meuble ${f.nom.toLowerCase()}, 0,5 L`, enseigne: 'Leroy Merlin', recherche: `peinture meuble ${f.nom}`, detail: labs.join(', '), prix: 25 });
+      ? { qte: 1, article: `Huile ${clear ? 'incolore' : 'teintée ' + f.nom.toLowerCase()} pour bois, 0,5 L`, enseigne: mg, recherche: `huile bois ${clear ? 'incolore' : 'teintée ' + f.nom}`, detail: labs.join(', '), prix: 22 }
+      : { qte: 1, article: `Peinture spéciale meuble ${f.nom.toLowerCase()}, 0,5 L`, enseigne: mg, recherche: `peinture meuble ${f.nom}`, detail: labs.join(', '), prix: 25 });
   });
   return out;
 }
@@ -811,8 +745,7 @@ function renderTabs() {
   const tabs = $('#propTabs');
   if (!tabs.children.length) VARIANTS.forEach((v, i) => { const b = document.createElement('button'); b.type = 'button'; b.onclick = () => { if (S.result[i] && S.active !== i) { S.active = i; E.framed = false; S.nstep = 0; renderResult(); } }; tabs.appendChild(b); });
   [...tabs.children].forEach((b, i) => {
-    const g = S.gen[i], ready = !!S.result[i]; b.disabled = !ready; b.setAttribute('aria-pressed', String(i === S.active));
-    b.textContent = ready ? VARIANTS[i].nom : `${VARIANTS[i].nom} · ${g && (g.status === 'error' || g.status === 'stopped') ? '—' : Math.round((g && g.pctMax) || 0) + ' %'}`;
+    const ready = !!S.result[i]; b.disabled = !ready; b.setAttribute('aria-pressed', String(i === S.active)); b.textContent = VARIANTS[i].nom;
   });
 }
 function renderResult() {
@@ -821,7 +754,7 @@ function renderResult() {
   const d = clamp(Math.round(+p.difficulte || 2), 1, 3); $('#pDiff').textContent = ['Facile', 'Moyen', 'Avancé'][d - 1]; $('#pDiff').className = 'pill d' + d;
   $('#pTime').textContent = p.duree || ''; $('#pResume').textContent = p.resume || '';
   const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
-  $('#pShops').textContent = `${(p.enseignes || []).join(' + ')} · ${Ls.some((L) => L.caissons) ? 'caissons du commerce' : 'panneaux sur mesure'} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`;
+  $('#pShops').textContent = `${[...new Set(linesFor(S.active).map((l) => l.enseigne).filter(Boolean))].join(' + ')} · ${Ls.some((L) => L.caissons) ? 'caissons du commerce' : 'panneaux sur mesure'} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`;
   const det = Ls.flatMap((L) => L.details).map((x) => x.type === 'passe_cable' ? `passe-câble Ø ${x.dia} mm (${x.face === 'plateau' ? 'plateau' : 'dos'})` : x.type === 'aeration' ? 'aération à l’arrière' : 'fixation anti-basculement');
   $('#pDetails').hidden = !det.length; $('#pDetails').textContent = det.length ? 'Prévu sur le meuble : ' + [...new Set(det)].join(', ') + '.' : '';
   $('#pWarn').hidden = !p.attention; $('#pWarn').textContent = p.attention ? 'Attention : ' + p.attention : '';
@@ -925,7 +858,7 @@ function renderHandles() {
 function renderFeet() {
   const cu = S.custom[S.active]; const grid = $('#fgrid'); grid.innerHTML = '';
   FEET.forEach((f) => grid.appendChild(card('feet', f.id, f.nom + (f.hidden ? ' (pieds cachés)' : ''), f.hidden ? 'Plinthe + vérins' : `${f.prix} € / pied`, feetThumb(f, cu.structure), '', f.id === cu.pieds)));
-  const robot = /robot|aspirateur/i.test($('#needs').value);
+  const robot = robotWanted();
   $('#feetWarn').hidden = !(feetById(cu.pieds).hidden && robot);
   $('#feetWarn').textContent = 'Avec des pieds cachés, le robot aspirateur ne pourra plus passer sous le meuble.';
 }
@@ -972,7 +905,7 @@ function drawProjection() {
     const z = zoneFor(m, mi) || DEFZ; const L = layoutModule(m, z);
     const zr = { x: z.x * cv.width, y: z.y * cv.height, w: z.w * cv.width, h: z.h * cv.height };
     const sx = zr.w / (pos(z.A) || L.W), sy = zr.h / (pos(z.B) || L.H), k = (sx + sy) / 2;
-    const left = zr.x + (zr.w - L.W * sx) / 2, bottom = zr.y + zr.h;
+    const left = zr.x + (m.decalage_mm != null ? num(m.decalage_mm) * sx : (zr.w - L.W * sx) / 2), bottom = zr.y + zr.h;
     const R = (x, y, w, hh) => [left + x * sx, bottom - (y + hh) * sy, w * sx, hh * sy];
     const X = (x) => left + x * sx, Y = (y) => bottom - y * sy;
     g.save();
@@ -1002,7 +935,8 @@ function drawProjection() {
     L.dividers.forEach((x) => g.fillRect(...R(x, L.y0, L.divT, L.y1 - L.y0)));
     L.shelves.forEach((s) => g.fillRect(...R(s.x, s.y, s.w, L.t)));
     L.cells.forEach((c) => {
-      if (c.type !== 'ouvert' || !c.contenu) return; const [x, y, w, hh] = R(c.x, c.y, c.w, c.h);
+      if (c.rod) { const [rx, ry, rw] = R(c.x + 10, c.y + c.h - 60, c.w - 20, 0); g.fillStyle = '#B9BDC1'; g.fillRect(rx, ry - Math.max(2, 12 * k), rw, Math.max(2, 12 * k)); }
+      if (c.type !== 'ouvert' || !c.contenu || c.rod) return; const [x, y, w, hh] = R(c.x, c.y, c.w, c.h);
       if (w > 50 && hh > 18) { g.fillStyle = 'rgba(255,255,255,.85)'; g.font = `600 ${clamp(hh / 5, 11, 16)}px "Plus Jakarta Sans", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(c.contenu).slice(0, Math.floor(w / 8)), x + w / 2, y + hh / 2); }
     });
     frontsOf(L, mi).forEach((f) => {
@@ -1243,6 +1177,10 @@ function addFront(G, f, L, M) {
   }
 }
 function addDetails(G, L) {
+  L.cells.filter((c) => c.rod).forEach((c) => {
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, c.w - 8, 16), mat('h:chrome')); rod.rotation.z = Math.PI / 2; rod.position.set(c.x + c.w / 2, c.y + c.h - 60, L.D / 2); rod.castShadow = true; G.add(rod);
+    [c.x + 6, c.x + c.w - 6].forEach((x) => { const sup = new THREE.Mesh(new THREE.BoxGeometry(8, 34, 30), mat('h:chrome')); sup.position.set(x, c.y + c.h - 60, L.D / 2); G.add(sup); });
+  });
   L.details.forEach((d) => {
     if (d.type === 'passe_cable') {
       const r = d.dia / 2, ring = new THREE.Mesh(new THREE.TorusGeometry(r + 2, 4, 10, 32), mat('h:noir')), hole = new THREE.Mesh(new THREE.CircleGeometry(r, 32), mat('dark'));
@@ -1286,7 +1224,7 @@ function build3D() {
     buildModule(G, L, o.mi, M, feet);
     if (!L.raised && (!tvMod || L.W > tvMod.L.W)) tvMod = { G, L };
   });
-  if (S.project === 'tv' && tvMod && tvMod.L.W >= 900) {
+  if ((p.tv !== undefined ? p.tv : S.project === 'tv') && tvMod && tvMod.L.W >= 900) {
     const L = tvMod.L, tw = Math.min(1450, L.W * .7), th = tw * .5625, y0 = L.H + 70, cx = L.W * .5, cz = L.D * .45;
     const black = new THREE.MeshStandardMaterial({ color: 0x0c0c0d, roughness: .25, metalness: .2 }); black.userData = {};
     const screen = new THREE.MeshStandardMaterial({ color: 0x0a0e16, roughness: .08, metalness: .1, emissive: 0x060a12 });
@@ -1504,7 +1442,7 @@ function writeStore(list) { try { localStorage.setItem(STORE_KEY, JSON.stringify
 let toastT = null;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function snapshot() {
-  return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, needs: $('#needs').value, obst: $('#obst').value, style: $('#style').value,
+  return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, itemsBy: S.itemsBy, ambiance: S.ambiance,
     zones: S.zones, level: S.level, tools: [...S.tools], shops: [...S.shops], example: S.example, photo: S.example ? null : (S.photoData || (S.photo && photoDataOf(S.photo))),
     result: S.result, custom: S.custom, active: S.active, genZones: S.genZones, view: S.view };
 }
@@ -1521,16 +1459,15 @@ $('#saveBtn').onclick = () => {
 $('#saveOk').onclick = () => { saveProject($('#saveName').value.trim()); $('#saveBar').hidden = true; };
 $('#saveCancel').onclick = () => { $('#saveBar').hidden = true; };
 function loadProject(pj) {
-  abortAll(); S.projId = pj.id; S.projName = pj.name || ''; S.project = pj.project || 'tv'; S.fab = pj.fab || 'mixte'; S.level = pj.level || 'bricoleur';
+  S.projId = pj.id; S.projName = pj.name || ''; S.project = pj.project || 'tv'; S.fab = pj.fab || 'mixte'; S.level = pj.level || 'bricoleur';
   S.tools = new Set(pj.tools || []); S.shops = new Set(pj.shops || []); S.zones = Array.isArray(pj.zones) ? pj.zones : []; S.sel = 0; S.redraw = null;
-  $('#needs').value = pj.needs || ''; $('#obst').value = pj.obst || ''; $('#style').value = pj.style || '';
+  S.itemsBy = pj.itemsBy && typeof pj.itemsBy === 'object' ? pj.itemsBy : {}; S.ambiance = pj.ambiance || 'bois';
   S.result = Array.isArray(pj.result) ? pj.result : [null, null, null]; S.custom = Array.isArray(pj.custom) ? pj.custom : [null, null, null];
   S.active = S.result[pj.active] ? pj.active : S.result.findIndex(Boolean); S.genZones = pj.genZones || null; S.view = pj.view || '3d';
   S.custom = S.custom.map((c, i) => (S.result[i] && !c) ? (initCustom(i), S.custom[i]) : c);
   S.custom.forEach((c) => { if (c && !c.pieds) c.pieds = 'carre_bois'; });
-  S.gen = S.result.map((r) => ({ status: r ? 'done' : 'error', pctMax: r ? 100 : 0 }));
-  E.state = {}; E.framed = false; S.nstep = 0; S.demo = false;
-  $('#propTabs').innerHTML = ''; $('#progBox').hidden = true; $('#errBox').hidden = true; $('#result').hidden = true;
+  E.state = {}; E.framed = false; S.nstep = 0;
+  $('#propTabs').innerHTML = ''; $('#errBox').hidden = true; $('#result').hidden = true;
   renderOptions();
   const img = pj.photo ? (() => { const i = new Image(); i.src = pj.photo; return i; })() : examplePhoto();
   setPhoto(img, !pj.photo, () => show(S.result.some(Boolean) ? 3 : clamp(num(pj.step), 0, 2)));
@@ -1553,32 +1490,6 @@ function renderProjects() {
 }
 $('#projBtn').onclick = () => { renderProjects(); $('#sheet').hidden = false; stopLoop(); };
 $('#sheetClose').onclick = () => { $('#sheet').hidden = true; if (S.step === 3 && currentProp() && S.view === '3d') startLoop(); };
-
-/* ================= example result (shown when Claude is unavailable) ================= */
-const caisse = { hauteur_mm: 186, type: 'caisse', contenu: 'caisse de vin' };
-const mod = (fab, Hm, topT, cols, details) => ({ zone: 1, fabrication: fab, largeur_mm: 2420, hauteur_mm: Hm, profondeur_mm: 440, pieds_mm: 110, epaisseur_plateau_mm: topT, colonnes: cols, details });
-const col = (cases, ref) => ({ largeur_mm: 600, ref: ref || '', cases });
-const BESTA = 'IKEA BESTÅ caisson 60 x 40 x 38 cm';
-const DEMO = [
-  { nom: 'Économique', resume: 'Quatre caissons IKEA BESTÅ tout faits sur pieds bois, un plateau sapin, vos caisses de vin en tiroirs.', duree: 'une demi-journée', difficulte: 1, enseignes: ['IKEA', 'Leroy Merlin'],
-    finitions: { structure: 'blanc', facades: 'pin', plateau: 'pin', poignee: 'cuir', finition_poignee: 'laiton', pieds: 'fuseau' },
-    modules: [mod('caissons', 530, 18, [col([{ hauteur_mm: 200, type: 'ouvert', contenu: 'ampli' }, caisse], BESTA), col([{ hauteur_mm: 200, type: 'ouvert', contenu: 'box' }, caisse], BESTA), col([{ hauteur_mm: 200, type: 'ouvert', contenu: 'enceinte' }, caisse], BESTA), col([{ hauteur_mm: 200, type: 'ouvert', contenu: 'vinyles' }, caisse], BESTA)],
-      [{ type: 'passe_cable', face: 'arriere', x_mm: 1210, y_mm: 230, diametre_mm: 60 }, { type: 'fixation_murale' }])],
-    liste: [{ qte: 4, article: 'IKEA BESTÅ caisson blanc 60 x 40 x 38 cm', enseigne: 'IKEA', recherche: 'BESTÅ caisson 60x40x38', prix: 140 },
-      { qte: 1, article: 'Tablette sapin lamellé-collé 250 x 60 cm, ép. 18 mm', enseigne: 'Leroy Merlin', recherche: 'tablette sapin lamellé collé 250 x 60', detail: 'recoupée à 2420 x 452 mm', prix: 42.9 }], attention: '' },
-  { nom: 'Équilibrée', resume: 'Structure en sapin, plateau chêne massif, un tiroir pour les câbles et vos caisses de vin.', duree: 'une journée', difficulte: 2, enseignes: ['Castorama', 'Leroy Merlin'],
-    finitions: { structure: 'pin', facades: 'chene', plateau: 'chene', poignee: 'barre_fine', finition_poignee: 'noir', pieds: 'carre_bois' },
-    modules: [mod('panneaux', 620, 26, [col([{ hauteur_mm: 280, type: 'ouvert', contenu: 'ampli' }, caisse]), col([{ hauteur_mm: 120, type: 'tiroir', contenu: 'câbles' }, { hauteur_mm: 150, type: 'ouvert', contenu: 'box' }, caisse]), col([{ hauteur_mm: 280, type: 'ouvert', contenu: 'enceinte' }, caisse]), col([{ hauteur_mm: 280, type: 'ouvert', contenu: 'vinyles' }, caisse])],
-      [{ type: 'passe_cable', face: 'arriere', x_mm: 900, y_mm: 230, diametre_mm: 60 }, { type: 'passe_cable', face: 'plateau', x_mm: 1210, y_mm: 60, diametre_mm: 60 }, { type: 'aeration', face: 'arriere', x_mm: 320, y_mm: 280, largeur_mm: 240, hauteur_mm: 60 }, { type: 'fixation_murale' }])],
-    liste: [{ qte: 1, article: 'Plan de travail chêne massif 250 x 65 cm, ép. 26 mm', enseigne: 'Castorama', recherche: 'plan de travail chêne massif 250 x 65', detail: 'recoupé à 2420 x 452 mm', prix: 99 },
-      { qte: 3, article: 'Tablette sapin lamellé-collé 250 x 60 cm, ép. 18 mm', enseigne: 'Leroy Merlin', recherche: 'tablette sapin lamellé collé 250 x 60', detail: 'découpe en magasin', prix: 128.7 },
-      { qte: 1, article: 'Contreplaqué peuplier 5 mm, 250 x 122 cm', enseigne: 'Leroy Merlin', recherche: 'contreplaqué peuplier 5 mm', detail: 'pour le dos et les fonds de tiroir', prix: 19 }], attention: 'Le chêne massif travaille : fixez le plateau avec les trous oblongs des équerres.' },
-  { nom: 'Optimale', resume: 'Tout en chêne, deux portes pour cacher l’ampli et la box, un passe-câble sous la TV.', duree: 'un week-end', difficulte: 3, enseignes: ['Leroy Merlin'],
-    finitions: { structure: 'chene', facades: 'chene', plateau: 'chene', poignee: 'barre_tube', finition_poignee: 'laiton', pieds: 'compas' },
-    modules: [mod('panneaux', 620, 36, [col([{ hauteur_mm: 280, type: 'porte', contenu: 'ampli' }, caisse]), col([{ hauteur_mm: 280, type: 'ouvert', contenu: 'enceinte' }, caisse]), col([{ hauteur_mm: 280, type: 'ouvert', contenu: 'vinyles' }, caisse]), col([{ hauteur_mm: 280, type: 'porte', contenu: 'box' }, caisse])],
-      [{ type: 'passe_cable', face: 'plateau', x_mm: 1210, y_mm: 60, diametre_mm: 60 }, { type: 'aeration', face: 'arriere', x_mm: 320, y_mm: 280, largeur_mm: 240, hauteur_mm: 60 }, { type: 'fixation_murale' }])],
-    liste: [{ qte: 2, article: 'Plan de travail chêne lamellé huilé 300 x 65 cm, ép. 36 mm', enseigne: 'Leroy Merlin', recherche: 'plan de travail chêne lamellé 300 x 65', detail: 'chutes utilisées en montants', prix: 658 },
-      { qte: 1, article: 'Contreplaqué chêne 5 mm, 250 x 122 cm', enseigne: 'Leroy Merlin', recherche: 'contreplaqué chêne 5 mm', detail: 'dos', prix: 45 }], attention: 'Des coupes au rail de guidage sont nécessaires.' }];
 
 renderOptions();
 setPhoto(examplePhoto(), true);

@@ -1,7 +1,7 @@
 // SNUG service worker: keeps the app shell available offline and loads fast on repeat visits.
 // Bump VERSION on each release so phones pick up the new files.
-const VERSION = 'snug-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+const VERSION = 'snug-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'engine.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'];
 
 self.addEventListener('install', (e) => {
@@ -14,7 +14,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.pathname.includes('/api/')) return; // never cache Claude calls
+  if (e.request.method !== 'GET') return;
   // Network first for the app's own files (fresh after a release), cache as fallback offline.
   e.respondWith(
     fetch(e.request).then((res) => {
