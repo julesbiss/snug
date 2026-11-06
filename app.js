@@ -495,7 +495,7 @@ const SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" strok
 async function aiCall(body) {
   let res; try { res = await fetch('api/assist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); } catch { throw { code: 'offline' }; }
   let d = null; try { d = await res.json(); } catch { throw { code: 'upstream_error' }; }
-  if (!res.ok || !d) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail }; return d;
+  if (!res.ok || !d || d.code) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail }; return d;
 }
 const aiCopy = (code) => code === 'rate_limited' ? 'Le quota gratuit du jour est atteint. Réessayez plus tard ou continuez sans l’IA.'
   : code === 'offline' ? 'Pas de connexion : continuez sans l’IA.' : 'L’IA n’a pas pu répondre. Continuez sans elle, ou réessayez.';

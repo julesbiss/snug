@@ -84,27 +84,41 @@ export default async function handler(req) {
     parts.push({ text: textPrompt(body) });
   } else return json({ code: 'invalid_request' }, 400);
 
-  const models = [...new Set([process.env.GEMINI_MODEL, ...FALLBACKS].filter(Boolean))];
-  let res = null, detail = '';
-  for (const model of models) {
+  // Answer at once and send the result when Gemini is done: Vercel only waits 25 s for the first byte.
+  const enc = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(ctrl) {
+      const beat = setInterval(() => ctrl.enqueue(enc.encode(' ')), 5000);
+      let result; try { result = await work(); } catch (e) { result = { code: 'upstream_error', detail: String(e).slice(0, 200) }; }
+      clearInterval(beat); ctrl.enqueue(enc.encode(JSON.stringify(result))); ctrl.close();
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+
+  async function work() {
+    const out = (o) => o;
+    const models = [...new Set([process.env.GEMINI_MODEL, ...FALLBACKS].filter(Boolean))];
+    let res = null, detail = '';
+    for (const model of models) {
+      try {
+        res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
+          method: 'POST', signal: req.signal,
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
+        });
+      } catch { return out({ code: 'upstream_error', detail: 'network' }, 502); }
+      if (res.ok) break;
+      let msg = ''; try { const e = await res.json(); msg = (e.error && e.error.message) || ''; } catch {}
+      detail = `${model}: ${res.status} ${msg}`.slice(0, 300);
+      if (res.status === 429) return out({ code: 'rate_limited', detail }, 429);
+      if (res.status !== 404 && res.status !== 400) return out({ code: 'upstream_error', detail }, 502); // bad key etc.: trying other models won't help
+    }
+    if (!res || !res.ok) return out({ code: 'upstream_error', detail }, 502);
+    let data; try { data = await res.json(); } catch { return out({ code: 'upstream_error' }, 502); }
+    const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
     try {
-      res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
-        method: 'POST', signal: req.signal,
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
-      });
-    } catch { return json({ code: 'upstream_error', detail: 'network' }, 502); }
-    if (res.ok) break;
-    let msg = ''; try { const e = await res.json(); msg = (e.error && e.error.message) || ''; } catch {}
-    detail = `${model}: ${res.status} ${msg}`.slice(0, 300);
-    if (res.status === 429) return json({ code: 'rate_limited', detail }, 429);
-    if (res.status !== 404 && res.status !== 400) return json({ code: 'upstream_error', detail }, 502); // bad key etc.: trying other models won't help
+      const a = text.indexOf('{'), b = text.lastIndexOf('}');
+      return out({ ok: true, result: JSON.parse(text.slice(a, b + 1)) });
+    } catch { return out({ code: 'invalid_json' }, 502); }
   }
-  if (!res || !res.ok) return json({ code: 'upstream_error', detail }, 502);
-  let data; try { data = await res.json(); } catch { return json({ code: 'upstream_error' }, 502); }
-  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-  try {
-    const a = text.indexOf('{'), b = text.lastIndexOf('}');
-    return json({ ok: true, result: JSON.parse(text.slice(a, b + 1)) });
-  } catch { return json({ code: 'invalid_json' }, 502); }
 }
