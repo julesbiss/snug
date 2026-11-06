@@ -66,8 +66,25 @@ async function diag(key) {
   } catch (e) { return json({ key: true, error: String(e) }); }
 }
 
+// /api/assist?diag=gen : asks each candidate model for a tiny JSON answer, to see which ones really respond.
+async function diagGen(key) {
+  if (!key) return json({ key: false });
+  const models = [...new Set([process.env.GEMINI_MODEL, ...FALLBACKS].filter(Boolean))].slice(0, 5);
+  const tests = await Promise.all(models.map(async (model) => {
+    const t0 = Date.now();
+    try {
+      const r = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Réponds uniquement {"ok":true}' }] }], generationConfig: { responseMimeType: 'application/json' } }) });
+      const d = await r.json().catch(() => ({}));
+      return { model, status: r.status, ms: Date.now() - t0, error: d.error ? d.error.message.slice(0, 200) : undefined, text: (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').slice(0, 60) };
+    } catch (e) { return { model, error: String(e).slice(0, 200), ms: Date.now() - t0 }; }
+  }));
+  return json({ tests });
+}
+
 export default async function handler(req) {
   const key = process.env.GEMINI_API_KEY;
+  if (req.method === 'GET' && new URL(req.url).searchParams.get('diag') === 'gen') return diagGen(key);
   if (req.method === 'GET' && new URL(req.url).searchParams.has('diag')) return diag(key);
   if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   let body; try { body = await req.json(); } catch { return json({ code: 'invalid_request' }, 400); }
