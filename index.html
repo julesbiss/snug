@@ -38,9 +38,11 @@
   <section data-step="0">
     <div class="col">
       <div class="head"><p class="eyebrow">Nouveau projet</p><h1>Que voulez-vous créer&nbsp;?</h1></div>
-      <div class="photo hero"><canvas id="cv0" width="1000" height="700" aria-label="Photo de l'espace"></canvas><span class="badge" id="photoBadge">Photo d'exemple</span>
-        <label class="photobtn" for="photoIn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Prendre une photo</label></div>
+      <div class="photo hero"><canvas id="cv0" width="1000" height="700" aria-label="Photo de l'espace"></canvas><span class="badge" id="photoBadge">Sans photo</span>
+        <div class="empty" aria-hidden="true"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><b>Prenez votre pièce en photo</b><span>Elle sert à placer le meuble et à le voir chez vous.</span></div>
+        <label class="photobtn" id="photoLbl" for="photoIn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Prendre une photo</label></div>
       <input class="sr" id="photoIn" type="file" accept="image/*" capture="environment">
+      <p class="small muted nophoto">Pas de photo sous la main&nbsp;? Continuez : on partira d’un mur vierge.</p>
       <div class="card aicard" id="aiPhoto" hidden aria-live="polite"></div>
       <div class="col tight"><p class="sublbl">Type de meuble</p><div class="grid2" id="projects"></div></div>
     </div>
@@ -50,7 +52,9 @@
     <div class="col">
       <div class="head"><p class="eyebrow">Les cotes</p><h1>Dessinez et mesurez</h1>
         <p class="lead">Glissez le doigt sur la photo pour tracer une zone. Chaque zone devient un module, avec ses propres cotes.</p></div>
-      <div class="photo"><canvas id="cv1" width="1000" height="700" aria-label="Zones du meuble et cotes à mesurer"></canvas></div>
+      <div class="photo zphoto"><canvas id="cv1" width="1000" height="700" aria-label="Zones du meuble et cotes à mesurer"></canvas>
+        <div class="drawbanner" id="drawBanner" hidden><span id="drawMsg">Glissez le doigt sur la photo pour tracer la zone du meuble</span><button type="button" class="btn ghost sm" id="drawCancel">Annuler</button></div></div>
+      <button type="button" class="btn ghost" id="drawBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="1" stroke-dasharray="3 2.5"/><path d="M12 9v6M9 12h6"/></svg>Ajouter une zone</button>
       <p class="small muted" id="zoneHint"></p>
       <div class="hint ainote" id="aiNotes" hidden></div>
       <div class="col" id="zoneList" style="gap:10px"></div>
@@ -69,6 +73,14 @@
         <div class="rowb"><p class="small muted" id="aiOut" hidden aria-live="polite"></p><span class="sp"></span><button type="button" class="btn primary sm" id="aiGo">Comprendre</button></div>
       </div>
       <div class="tiles" id="itemList"></div>
+      <div class="card" id="customForm" hidden>
+        <b>Ajouter un objet</b>
+        <label class="field"><span>Nom</span><input id="cNom" type="text" maxlength="40" placeholder="Ex. : machine à coudre"></label>
+        <div class="grid2"><label class="field"><span>Hauteur (cm)</span><input id="cH" type="number" inputmode="numeric" min="5" placeholder="30"></label><label class="field"><span>Largeur (cm)</span><input id="cW" type="number" inputmode="numeric" min="8" placeholder="40"></label></div>
+        <div class="seg" id="cType" role="group" aria-label="Rangement"><button type="button" data-t="ouvert" aria-pressed="true">Ouvert</button><button type="button" data-t="porte" aria-pressed="false">Porte</button><button type="button" data-t="tiroir" aria-pressed="false">Tiroir</button></div>
+        <p class="warn small" id="cErr" hidden>Indiquez un nom, une hauteur et une largeur.</p>
+        <div class="rowb"><button type="button" class="btn ghost sm" id="cCancel">Annuler</button><button type="button" class="btn primary sm" id="cAdd">Ajouter</button></div>
+      </div>
       <div class="col tight" id="itemOpts"></div>
     </div>
   </section>
@@ -99,7 +111,7 @@
               <button class="ibtn glass" id="openAll" aria-label="Tout ouvrir" title="Tout ouvrir"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 12h18M10 8.5h4M10 15.5h4"/></svg></button>
               <button class="ibtn glass" id="recenter" aria-label="Recentrer la vue" title="Recentrer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/><circle cx="12" cy="12" r="2.5"/></svg></button>
             </div>
-            <div class="overlay bottom"><span class="stagehint" id="hint3d">Glissez pour tourner · touchez une façade pour l’ouvrir</span><span class="sp"></span><span class="pricechip" id="pPrice2"></span></div>
+            <div class="overlay bottom"><span class="stagehint" id="hint3d">Glissez pour tourner · touchez une case pour la modifier</span><span class="sp"></span><span class="pricechip" id="pPrice2"></span></div>
           </div>
           <nav class="cfgnav" id="cfgNav" aria-label="Étapes de personnalisation"></nav>
         </div>
@@ -158,6 +170,7 @@
     <div class="col" id="projList" style="gap:10px"></div>
   </div>
 </div>
+<div class="cellsheet" id="cellSheet" hidden role="dialog" aria-label="Modifier la case"></div>
 <div class="toast" id="toast" hidden role="status"></div>
 <div class="bar"><div class="in"><button class="btn ghost" id="backBtn">Retour</button><button class="btn primary" id="nextBtn">Continuer</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

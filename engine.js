@@ -251,6 +251,13 @@ function buildVariant(ctx, vi) {
     const n = clamp(Math.round(num(ctx.items[it.id])), 0, it.max || 20);
     for (let k = 0; k < n; k++) slotsAll.push({ it, h: it.h, hMin: it.hMin, w: it.w, d: it.d, type: it.types ? it.types[vi] : it.type, pos: it.pos, rod: !!it.rod, label: it.label, vent: it.vent, cable: it.cable });
   });
+  // objects the user added by hand: name, clear height and width, how it is closed
+  (ctx.custom || []).forEach((c) => {
+    const n = clamp(Math.round(num(c.n)), 0, 20), h = clamp(num(c.h), 60, 2400), w = clamp(num(c.w), 100, 1200);
+    const type = ['ouvert', 'porte', 'tiroir', 'caisse', 'abattant'].includes(c.type) ? c.type : 'ouvert';
+    const it = { nom: String(c.nom || 'Objet').slice(0, 40) };
+    for (let k = 0; k < n; k++) slotsAll.push({ it, h, w, d: clamp(num(c.d, 250), 100, 700), type, pos: h > 900 ? 'bas' : 'mid', rod: false, label: it.nom.toLowerCase().slice(0, 16) });
+  });
 
   let mods = null, unplaced = [], extra = 0, fellBack = false;
   for (let iter = 0; iter < 8; iter++) {
@@ -263,8 +270,19 @@ function buildVariant(ctx, vi) {
   }
   if (fellBack) notes.push('Aucun caisson du commerce ne rentre dans une des zones : cette partie est prévue en panneaux découpés.');
   if (unplaced.length) {
-    const cnt = {}; unplaced.forEach((s) => { cnt[s.it.nom] = (cnt[s.it.nom] || 0) + 1; });
-    notes.push(`Pas assez de place pour : ${Object.entries(cnt).map(([n, c]) => (c > 1 ? `${c} × ${n.toLowerCase()}` : n.toLowerCase())).join(', ')}. Agrandissez une zone ou dessinez-en une autre.`);
+    // say WHY each object does not fit: too tall, too wide, or simply no room left
+    const cols = mods.flatMap((m) => m.colonnes.filter((c) => !c.knee));
+    const maxH = Math.max(0, ...cols.map((c) => c.Hin)), maxW = Math.max(0, ...cols.map((c) => c.inner));
+    const by = new Map();
+    unplaced.forEach((s) => { const k = s.it.nom; const g = by.get(k) || { n: 0, s }; g.n++; by.set(k, g); });
+    const mm = (v) => Math.round(v).toLocaleString('fr-FR') + ' mm';
+    by.forEach(({ n, s }, nom) => {
+      const what = (n > 1 ? n + ' × ' : '') + nom.toLowerCase();
+      const hNeed = s.hMin || s.h;
+      if (hNeed > maxH) notes.push(`Impossible de loger ${what} : il faut ${mm(hNeed)} de haut, la plus grande case possible fait ${mm(maxH)}.`);
+      else if (s.w * .92 > maxW) notes.push(`Impossible de loger ${what} : il faut ${mm(s.w)} de large, les colonnes font ${mm(maxW)}.`);
+      else notes.push(`Plus de place pour ${what} : agrandissez une zone, dessinez-en une autre ou retirez un objet.`);
+    });
   }
   const tooDeep = new Map();
   mods.forEach((m) => m._slots.forEach((s) => { if (s.d > m.profondeur_mm) tooDeep.set(s.it.nom, [s.d, m.profondeur_mm]); }));
@@ -531,7 +549,7 @@ function design(input) {
   const magasin = shopsIn.has('Leroy Merlin') || !shopsIn.size ? 'Leroy Merlin' : shopsIn.has('Castorama') ? 'Castorama' : 'Leroy Merlin';
   const zones = (input.zones || []).filter((z) => num(z.A) > 0 && num(z.B) > 0 && num(z.C) > 0);
   if (!zones.length) throw new Error('no_zone');
-  const ctx = { project, items, zones, fab: input.fab || 'mixte', level: input.level || 'bricoleur', tools: new Set(input.tools || []), shops: shopsIn, mix, magasin,
+  const ctx = { project, items, custom: Array.isArray(input.custom) ? input.custom : [], zones, fab: input.fab || 'mixte', level: input.level || 'bricoleur', tools: new Set(input.tools || []), shops: shopsIn, mix, magasin,
     ambiance: AMB[input.ambiance] ? input.ambiance : 'bois', robot: !!num(items.robot) };
   return [0, 1, 2].map((vi) => buildVariant(ctx, vi));
 }

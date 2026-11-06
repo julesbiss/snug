@@ -117,7 +117,7 @@ const S = {
   step: 0, photo: null, photoData: null, example: true, project: 'tv', fab: 'mixte',
   zones: [{ ...DEFZ }], sel: 0, redraw: null,
   level: 'bricoleur', tools: new Set(['Visseuse', 'Perceuse', 'Niveau']), shops: new Set(['IKEA', 'Leroy Merlin', 'Castorama', 'Autoriser le mélange']),
-  result: [null, null, null], custom: [null, null, null], active: -1, genZones: null, itemsBy: {}, ambiance: 'bois',
+  result: [null, null, null], custom: [null, null, null], active: -1, genZones: null, itemsBy: {}, customBy: {}, ambiance: 'bois', drawMode: false, selCell: null,
   view: '3d', hcat: 'Toutes',
   hits: [], keys2d: [], anim2d: false, pane: 'modele', ntab: 'steps', nstep: 0, notice: null, projId: null, projName: '' };
 
@@ -201,15 +201,13 @@ function makeEnv(renderer) {
 
 /* ================= example photo ================= */
 function examplePhoto() {
+  // No photo yet: a quiet, empty wall to draw on (no fake objects).
   const c = document.createElement('canvas'); c.width = 1200; c.height = 840; const g = c.getContext('2d');
-  g.fillStyle = '#D9D3C7'; g.fillRect(0, 0, 1200, 840);
-  g.fillStyle = '#CBC4B6'; g.fillRect(0, 0, 70, 840); g.fillRect(1130, 0, 70, 840);
-  g.fillStyle = '#EFEAE1'; g.fillRect(0, 640, 1200, 14);
-  g.fillStyle = '#B89C7B'; g.fillRect(0, 654, 1200, 186);
-  g.strokeStyle = 'rgba(0,0,0,.08)'; for (let x = 0; x < 1300; x += 120) { g.beginPath(); g.moveTo(x, 654); g.lineTo(x - 40, 840); g.stroke(); }
-  g.fillStyle = '#1C1D20'; g.fillRect(380, 140, 520, 300); g.fillStyle = '#2E3A4A'; g.fillRect(392, 152, 496, 276);
-  g.fillStyle = '#F7F4EE'; g.fillRect(560, 600, 30, 22);
-  const img = new Image(); img.src = c.toDataURL('image/jpeg', .85); return img;
+  const wall = g.createLinearGradient(0, 0, 0, 640); wall.addColorStop(0, '#2B2926'); wall.addColorStop(1, '#3A3733'); g.fillStyle = wall; g.fillRect(0, 0, 1200, 660);
+  const fl = g.createLinearGradient(0, 660, 0, 840); fl.addColorStop(0, '#24211E'); fl.addColorStop(1, '#171513'); g.fillStyle = fl; g.fillRect(0, 660, 1200, 180);
+  g.fillStyle = '#4A4641'; g.fillRect(0, 648, 1200, 14);
+  g.strokeStyle = 'rgba(255,255,255,.035)'; g.lineWidth = 2; for (let x = -200; x < 1400; x += 150) { g.beginPath(); g.moveTo(x, 662); g.lineTo(x - 90, 840); g.stroke(); }
+  const img = new Image(); img.src = c.toDataURL('image/jpeg', .9); return img;
 }
 
 /* ================= canvas helpers ================= */
@@ -227,90 +225,125 @@ function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y
 function head(g, x1, y1, x2, y2, s) { const a = Math.atan2(y2 - y1, x2 - x1); g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 - s * Math.cos(a - .45), y2 - s * Math.sin(a - .45)); g.lineTo(x2 - s * Math.cos(a + .45), y2 - s * Math.sin(a + .45)); g.closePath(); g.fill(); }
 function arrow(g, x1, y1, x2, y2, s) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); head(g, x1, y1, x2, y2, s); head(g, x2, y2, x1, y1, s); }
 function badge(g, x, y, t, r) {
-  r = r || 15; g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = '#0E0F11'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#E9B26B'; g.stroke();
-  g.fillStyle = '#E9B26B'; g.font = `800 ${Math.round(r * 1.1)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + 1); g.restore();
+  g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = '#0E0F11'; g.fill(); g.lineWidth = r * .16; g.strokeStyle = '#E9B26B'; g.stroke();
+  g.fillStyle = '#E9B26B'; g.font = `700 ${Math.round(r * 1.05)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + r * .06); g.restore();
 }
-/* Arrows are drawn INSIDE each zone with small letter badges, so neighbouring zones never collide. */
-function drawZonesOn(g, W, H, zones, sel, full) {
+/* Arrows are drawn INSIDE each zone with letter badges sized for the screen, so they stay readable on a phone. */
+function drawZonesOn(g, W, H, zones, sel, full, k) {
+  k = k || 1;
   zones.forEach((z, i) => {
     const x = z.x * W, y = z.y * H, w = z.w * W, h = z.h * H, on = !full && i === sel;
     g.save();
-    g.fillStyle = on ? 'rgba(233,178,107,.14)' : 'rgba(233,178,107,.07)'; g.fillRect(x, y, w, h);
-    g.setLineDash([12, 8]); g.strokeStyle = '#E9B26B'; g.lineWidth = on || full ? 3.5 : 2.5; g.strokeRect(x, y, w, h); g.setLineDash([]);
+    g.fillStyle = on ? 'rgba(233,178,107,.16)' : 'rgba(233,178,107,.07)'; g.fillRect(x, y, w, h);
+    g.setLineDash([8 * k, 6 * k]); g.strokeStyle = '#E9B26B'; g.lineWidth = (on ? 2.5 : 1.6) * k; g.strokeRect(x, y, w, h); g.setLineDash([]);
     if (on) {
-      const m = clamp(Math.min(w, h) * .12, 14, 26), hs = clamp(Math.min(w, h) * .08, 8, 14), br = clamp(Math.min(w, h) * .09, 10, 15);
-      g.strokeStyle = '#E9B26B'; g.fillStyle = '#E9B26B'; g.lineWidth = 4;
-      arrow(g, x + 8, y + h - m, x + w - m - 8, y + h - m, hs);
-      arrow(g, x + w - m, y + 8, x + w - m, y + h - m - 8, hs);
-      const dl = clamp(Math.min(w, h) * .3, 18, 70), cx0 = x + m + 4, cy0 = y + h - m - br * 2 - 6;
-      arrow(g, cx0, cy0, cx0 + dl, cy0 - dl, hs);
-      badge(g, x + (w - m) / 2, y + h - m, 'A', br);
-      badge(g, x + w - m, y + (h - m) / 2, 'B', br);
-      badge(g, cx0 + dl / 2 + br + 4, cy0 - dl / 2 + br * .4, 'C', br);
+      const br = Math.min(14 * k, Math.min(w, h) * .2), m = br + 8 * k, hs = 7 * k;
+      g.strokeStyle = '#E9B26B'; g.fillStyle = '#E9B26B'; g.lineWidth = 2.6 * k;
+      arrow(g, x + 6 * k, y + h - m, x + w - 6 * k, y + h - m, hs);
+      arrow(g, x + w - m, y + 6 * k, x + w - m, y + h - 6 * k, hs);
+      const dl = Math.min(Math.min(w, h) * .35, 46 * k), cx0 = x + m + 6 * k, cy0 = y + h - m - br - 10 * k;
+      if (cy0 - dl > y + br) arrow(g, cx0, cy0, cx0 + dl, cy0 - dl, hs);
+      badge(g, x + w / 2, y + h - m, 'A', br);
+      badge(g, x + w - m, y + h / 2, 'B', br);
+      if (cy0 - dl > y + br) badge(g, cx0 + dl / 2 + br * .9, cy0 - dl / 2 + br * .5, 'C', br * .9);
     }
-    const r = full ? 26 : 15, cx = x + r + 6, cy = y + r + 6;
+    const r = 12 * k, cx = x + r + 6 * k, cy = y + r + 6 * k;
     g.fillStyle = '#E9B26B'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#17130C'; g.font = `800 ${full ? 28 : 16}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), cx, cy + 1);
+    g.fillStyle = '#17130C'; g.font = `700 ${Math.round(r * 1.1)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), cx, cy + r * .06);
     g.restore();
   });
 }
 function drawCotes(tmp) {
-  const cv = $('#cv1'); const g = drawPhoto(cv); drawZonesOn(g, cv.width, cv.height, S.zones, S.sel, false);
+  const cv = $('#cv1'); const g = drawPhoto(cv); const k = cv.width / Math.max(200, cv.clientWidth || 360); drawZonesOn(g, cv.width, cv.height, S.zones, S.sel, false, k);
   if (tmp) { g.save(); g.setLineDash([8, 6]); g.strokeStyle = '#E9B26B'; g.lineWidth = 3; g.strokeRect(tmp.x * cv.width, tmp.y * cv.height, tmp.w * cv.width, tmp.h * cv.height); g.restore(); }
 }
 
 /* ================= zones ================= */
+// Touching the photo scrolls the page; a zone is drawn only after "Tracer une zone" (or when there is none yet).
 (function () {
-  const cv = $('#cv1'); let drag = null;
+  const cv = $('#cv1'); let drag = null, tap = null;
   const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: clamp((e.clientX - r.left) / r.width, 0, 1), y: clamp((e.clientY - r.top) / r.height, 0, 1) }; };
   const rectOf = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
-  cv.addEventListener('pointerdown', (e) => { drag = { s: pt(e), c: pt(e) }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointerdown', (e) => {
+    if (!S.drawMode) { tap = { x: e.clientX, y: e.clientY, p: pt(e) }; return; }
+    drag = { s: pt(e), c: pt(e) }; cv.setPointerCapture(e.pointerId);
+  });
   cv.addEventListener('pointermove', (e) => { if (!drag) return; drag.c = pt(e); const r = rectOf(drag.s, drag.c); if (r.w > .02 || r.h > .02) drawCotes(r); });
   const end = (e) => {
-    if (!drag) return; const r = rectOf(drag.s, drag.c); const a = drag.s; drag = null;
+    if (tap) { // simple tap: select the zone under the finger
+      const t = tap; tap = null;
+      if (e.type === 'pointerup' && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10) {
+        for (let i = S.zones.length - 1; i >= 0; i--) { const z = S.zones[i]; if (t.p.x >= z.x && t.p.x <= z.x + z.w && t.p.y >= z.y && t.p.y <= z.y + z.h) { S.sel = i; renderZones(); drawCotes(); break; } }
+      }
+      return;
+    }
+    if (!drag) return; const r = rectOf(drag.s, drag.c); drag = null;
     if (e.type === 'pointerup' && r.w > .03 && r.h > .03) {
       if (S.redraw !== null && S.zones[S.redraw]) { Object.assign(S.zones[S.redraw], r, { est: null }); S.sel = S.redraw; S.redraw = null; }
       else { S.zones.push({ ...r, A: '', B: '', C: '', D: 0 }); S.sel = S.zones.length - 1; }
-      renderZones();
-    } else if (e.type === 'pointerup') {
-      for (let i = S.zones.length - 1; i >= 0; i--) { const z = S.zones[i]; if (a.x >= z.x && a.x <= z.x + z.w && a.y >= z.y && a.y <= z.y + z.h) { S.sel = i; renderZones(); break; } }
+      S.drawMode = false; renderZones();
+      setTimeout(() => { const c = document.querySelectorAll('.zonecard')[S.sel]; if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     }
     drawCotes();
   };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  $('#drawBtn').onclick = () => { S.drawMode = true; S.redraw = null; renderZones(); $('#cv1').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  $('#drawCancel').onclick = () => { S.drawMode = false; S.redraw = null; renderZones(); drawCotes(); };
 })();
-const D_ICON = '<svg width="54" height="44" viewBox="0 0 54 44" aria-hidden="true"><rect x="10" y="4" width="34" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><line x1="2" y1="40" x2="52" y2="40" stroke="currentColor" stroke-width="2"/><line x1="27" y1="24" x2="27" y2="38" stroke="#E9B26B" stroke-width="2.5"/><path d="M23 27 L27 23 L31 27 M23 35 L27 39 L31 35" fill="none" stroke="#E9B26B" stroke-width="2"/></svg>';
+const DIM_SVG = `<svg class="dimsvg" viewBox="0 0 300 186" role="img" aria-label="A largeur, B hauteur, C profondeur, D hauteur au-dessus du sol">
+  <line x1="8" y1="176" x2="292" y2="176" stroke="#4A4E55" stroke-width="2"/>
+  <path d="M62 40 L92 16 L236 16 L206 40 Z" fill="#1F2227" stroke="#C9CACD" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M206 40 L236 16 L236 90 L206 114 Z" fill="#191B1F" stroke="#C9CACD" stroke-width="2" stroke-linejoin="round"/>
+  <rect x="62" y="40" width="144" height="74" fill="#24272D" stroke="#C9CACD" stroke-width="2"/>
+  <g stroke="#E9B26B" stroke-width="2.4" fill="#E9B26B" stroke-linecap="round">
+    <line x1="64" y1="130" x2="204" y2="130"/><path d="M64 130l8-5v10z M204 130l-8-5v10z" stroke="none"/>
+    <line x1="44" y1="42" x2="44" y2="112"/><path d="M44 42l-5 8h10z M44 112l-5-8h10z" stroke="none"/>
+    <line x1="246" y1="94" x2="268" y2="76"/><path d="M246 94l9-1-5-7z M268 76l-9 1 5 7z" stroke="none"/>
+    <line x1="222" y1="108" x2="222" y2="172" stroke-dasharray="4 4"/><path d="M222 172l-5-8h10z M222 108l-5 8h10z" stroke="none"/>
+  </g>
+  <g font-family="Geist, sans-serif" font-weight="700" font-size="15" text-anchor="middle">
+    <circle cx="134" cy="130" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="134" y="135" fill="#E9B26B">A</text>
+    <circle cx="44" cy="77" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="44" y="82" fill="#E9B26B">B</text>
+    <circle cx="278" cy="68" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="278" y="73" fill="#E9B26B">C</text>
+    <circle cx="246" cy="146" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="246" y="151" fill="#E9B26B">D</text>
+  </g></svg>`;
+const DIMS = [['A', 'Largeur', 'La place disponible, d’un bord à l’autre'], ['B', 'Hauteur', 'La hauteur maximale du meuble'],
+  ['C', 'Profondeur', 'Depuis le mur, sans gêner le passage'], ['D', 'Hauteur au-dessus du sol', '0 si le meuble est posé au sol']];
 function renderZones() {
   const box = $('#zoneList'); box.innerHTML = '';
-  $('#zoneHint').textContent = S.redraw !== null ? `Dessinez à nouveau la zone ${S.redraw + 1} sur la photo.`
-    : S.zones.length ? `${S.zones.length} zone${S.zones.length > 1 ? 's' : ''}. Glissez sur la photo pour en ajouter une, touchez une zone pour la sélectionner.`
-    : 'Glissez le doigt sur la photo pour dessiner votre première zone.';
+  const drawing = !!S.drawMode || S.redraw !== null;
+  $('#cv1').parentElement.classList.toggle('drawing', drawing);
+  $('#drawBanner').hidden = !drawing;
+  $('#drawMsg').textContent = S.redraw !== null ? `Glissez le doigt pour retracer la zone ${S.redraw + 1}` : 'Glissez le doigt sur la photo pour tracer la zone du meuble';
+  $('#drawCancel').hidden = !S.zones.length;
+  $('#drawBtn').hidden = drawing; $('#drawBtn').lastChild.textContent = S.zones.length ? 'Ajouter une zone' : 'Tracer la zone du meuble';
+  $('#zoneHint').textContent = S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone sur la photo pour la sélectionner.` : '';
   S.zones.forEach((z, i) => {
     const card = document.createElement('div'); card.className = 'card zonecard' + (i === S.sel ? ' sel' : '');
-    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link" data-act="redraw">Redessiner</button><button type="button" class="link danger" data-act="del">Supprimer</button></div><div class="cotes"></div><p class="dhelp">${D_ICON}<span>D : mettez 0 si le meuble est posé au sol. S'il est fixé au mur, mesurez la hauteur entre le sol et le dessous du meuble.</span></p>`;
+    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link" data-act="redraw">Retracer</button><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<div class="cotes"></div>`;
     const ct = card.querySelector('.cotes');
-    [['A', 'Largeur'], ['B', 'Hauteur'], ['C', 'Profondeur'], ['D', 'Distance sol - dessous du meuble']].forEach(([k, l]) => {
+    DIMS.forEach(([k, l, sub]) => {
       const id = `z${i}${k}`; const row = document.createElement('div'); row.className = 'cote';
-      row.innerHTML = `<span class="k">${k}</span><label for="${id}">${l}</label><span class="u"><input id="${id}" type="number" inputmode="numeric" min="0"><span class="muted small">mm</span></span>`;
+      row.innerHTML = `<span class="k">${k}</span><label for="${id}"><b>${l}</b><small>${sub}</small></label><span class="u"><input id="${id}" type="number" inputmode="numeric" min="0" placeholder="0"><span>mm</span></span>`;
       const inp = row.querySelector('input'); inp.value = z[k]; if (z.est && +z.est[k] > 0) inp.placeholder = '≈ ' + Math.round(+z.est[k]);
       inp.addEventListener('input', () => { z[k] = inp.value; });
       inp.addEventListener('focus', () => { if (S.sel !== i) { S.sel = i; drawCotes(); document.querySelectorAll('.zonecard').forEach((c, j) => c.classList.toggle('sel', j === i)); } });
       ct.appendChild(row);
     });
-    card.querySelector('[data-act=redraw]').onclick = () => { S.redraw = i; S.sel = i; renderZones(); drawCotes(); $('#cv1').scrollIntoView({ block: 'center' }); };
-    card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); S.redraw = null; renderZones(); drawCotes(); };
+    card.querySelector('[data-act=redraw]').onclick = () => { S.redraw = i; S.sel = i; S.drawMode = true; renderZones(); drawCotes(); $('#cv1').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+    card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); S.redraw = null; if (!S.zones.length) S.drawMode = true; renderZones(); drawCotes(); };
     box.appendChild(card);
   });
 }
 const zonesOk = () => S.zones.length > 0 && S.zones.every((z) => pos(z.A) && pos(z.B) && pos(z.C));
 
 /* ================= profile options ================= */
-function optButtons(el, list, getOn, onPick) {
+function optButtons(el, list, getOn, onPick, imgOf) {
   el.innerHTML = '';
   list.forEach(([id, name, hint, icon]) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'opt'; b.innerHTML = (icon ? `<i class="oi">${ICON(icon, 30)}</i>` : '') + '<b></b><span></span>';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'opt' + (imgOf ? ' withimg' : ''); b.innerHTML = (imgOf ? `<img class="oprev" alt="" src="${imgOf(id)}" loading="lazy">` : icon ? `<i class="oi">${ICON(icon, 30)}</i>` : '') + '<b></b><span></span>';
     b.querySelector('b').textContent = name; b.querySelector('span').textContent = hint; b.setAttribute('aria-pressed', String(getOn(id)));
-    b.onclick = () => { onPick(id); optButtons(el, list, getOn, onPick); }; el.appendChild(b);
+    b.onclick = () => { onPick(id); optButtons(el, list, getOn, onPick, imgOf); }; el.appendChild(b);
   });
 }
 function chipButtons(el, list, set) {
@@ -321,7 +354,7 @@ function chipButtons(el, list, set) {
   });
 }
 function renderOptions() {
-  optButtons($('#projects'), PROJECTS, (id) => S.project === id, (id) => { S.project = id; renderItems(); });
+  optButtons($('#projects'), PROJECTS, (id) => S.project === id, (id) => { S.project = id; renderItems(); }, (id) => `previews/${id}.jpg`);
   optButtons($('#ambiances'), ENG.AMBIANCES, (id) => S.ambiance === id, (id) => { S.ambiance = id; });
   optButtons($('#fabs'), FABS, (id) => S.fab === id, (id) => { S.fab = id; });
   optButtons($('#levels'), LEVELS, (id) => S.level === id, (id) => { S.level = id; });
@@ -338,7 +371,9 @@ function setPhoto(img, example, after) {
   S.photo = img; S.example = example; S.photoData = null;
   const go = () => { if (!example) S.photoData = photoDataOf(img); drawPhoto($('#cv0')); if (S.step === 1) drawCotes(); if (after) after(); };
   if (img.complete && img.naturalWidth) go(); else img.onload = go;
-  $('#photoBadge').textContent = example ? "Photo d'exemple" : 'Votre photo';
+  $('#photoBadge').textContent = example ? 'Sans photo' : 'Votre photo';
+  document.querySelector('.photo.hero').classList.toggle('isEmpty', !!example);
+  $('#photoLbl').lastChild.textContent = example ? 'Prendre une photo' : 'Changer de photo';
 }
 $('#photoIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -355,9 +390,10 @@ function show(step) {
   $('#nextBtn').textContent = step === 3 ? 'Voir mes 3 meubles' : (step === 4 ? 'Nouveau projet' : 'Continuer');
   $('#backBtn').textContent = 'Retour';
   if (step === 0) drawPhoto($('#cv0'));
-  if (step === 1) { renderZones(); drawCotes(); }
+  if (step === 1) { if (!S.zones.length) S.drawMode = true; renderZones(); drawCotes(); }
   if (step === 2) renderItems();
   if (step === 4 && currentProp()) renderResult(); else stopLoop();
+  if (step !== 4) { S.selCell = null; $('#cellSheet').hidden = true; }
   updateBar();
   window.scrollTo({ top: 0 });
 }
@@ -448,7 +484,11 @@ function handleHoles(f, h, D) {
 /* ================= what to store (step 1) ================= */
 const ENG = window.SnugEngine;
 function projectName() { return (PROJECTS.find((p) => p[0] === S.project) || [, 'Meuble'])[1]; }
-function curItems() { return S.itemsBy[S.project] || (S.itemsBy[S.project] = ENG.defaults(S.project)); }
+function curItems() {
+  if (!S.itemsBy[S.project]) { const d = ENG.defaults(S.project); ENG.itemsOf(S.project).forEach((i) => { if (i.kind !== 'choice' && i.kind !== 'number') d[i.id] = 0; }); S.itemsBy[S.project] = d; }
+  return S.itemsBy[S.project];
+}
+function curCustom() { return S.customBy[S.project] || (S.customBy[S.project] = []); }
 function robotWanted() { return !!num(curItems().robot); }
 function renderItems() {
   const box = $('#itemList'), opts = $('#itemOpts'); box.innerHTML = ''; opts.innerHTML = '';
@@ -484,8 +524,27 @@ function renderItems() {
       add.setAttribute('aria-label', `${d.nom}${d.hint ? ', ' + d.hint : ''} : ${v} ${max === 1 ? (v ? 'oui' : 'non') : ''}`.trim()); };
     add.onclick = () => { const v = num(it[d.id]); it[d.id] = max === 1 ? (v ? 0 : 1) : Math.min(max, v + 1); upd(); };
     minus.onclick = () => { it[d.id] = Math.max(0, num(it[d.id]) - 1); upd(); };
+    const zoneH = Math.max(0, ...S.zones.map((z) => pos(z.B))), need = d.hMin || d.h;
+    const tooTall = zoneH > 0 && need && need > zoneH - 120;
+    if (tooTall) { tile.classList.add('warn'); tile.insertAdjacentHTML('beforeend', '<span class="wtag">Trop haut</span>'); add.title = `Il faut environ ${need} mm de haut ; votre zone fait ${zoneH} mm.`; }
+    const add0 = add.onclick; add.onclick = () => { add0(); if (tooTall && num(it[d.id]) > 0) toast(`${d.nom} : il faut environ ${need.toLocaleString('fr-FR')} mm de haut, votre zone fait ${zoneH.toLocaleString('fr-FR')} mm.`); };
     upd(); box.appendChild(tile);
   });
+  // objects added by hand
+  curCustom().forEach((c, ci) => {
+    const tile = document.createElement('div'); tile.className = 'tile on custom';
+    tile.innerHTML = `<button type="button" class="add">${ICON('M8 14h32v24H8z M8 22h32 M20 18h8', 34)}<b></b><small></small></button><span class="cnt"></span><button type="button" class="minus">−</button>`;
+    tile.querySelector('b').textContent = c.nom; tile.querySelector('small').textContent = `${Math.round(c.h / 10)} × ${Math.round(c.w / 10)} cm`;
+    const cnt = tile.querySelector('.cnt'); const upd = () => { cnt.textContent = '×' + c.n; };
+    tile.querySelector('.add').onclick = () => { c.n = Math.min(20, c.n + 1); upd(); };
+    tile.querySelector('.minus').setAttribute('aria-label', `Retirer : ${c.nom}`);
+    tile.querySelector('.minus').onclick = () => { c.n -= 1; if (c.n <= 0) { curCustom().splice(ci, 1); renderItems(); } else upd(); };
+    upd(); box.appendChild(tile);
+  });
+  const addTile = document.createElement('div'); addTile.className = 'tile addnew';
+  addTile.innerHTML = `<button type="button" class="add">${ICON('M24 12v24 M12 24h24', 30)}<b>Autre objet</b></button>`;
+  addTile.querySelector('.add').onclick = () => { $('#customForm').hidden = false; $('#cNom').focus(); };
+  box.appendChild(addTile);
   opts.hidden = !opts.children.length;
 }
 
@@ -560,6 +619,15 @@ async function aiText() {
   btn.disabled = false; btn.textContent = 'Comprendre';
 }
 $('#aiGo').onclick = aiText;
+document.querySelectorAll('#cType button').forEach((b) => { b.onclick = () => document.querySelectorAll('#cType button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
+$('#cCancel').onclick = () => { $('#customForm').hidden = true; };
+$('#cAdd').onclick = () => {
+  const nom = $('#cNom').value.trim(), h = num($('#cH').value) * 10, w = num($('#cW').value) * 10;
+  const type = (document.querySelector('#cType button[aria-pressed="true"]') || {}).dataset?.t || 'ouvert';
+  if (!nom || h < 50 || w < 80) { $('#cErr').hidden = false; return; }
+  $('#cErr').hidden = true; curCustom().push({ nom, h, w, type, n: 1 });
+  ['#cNom', '#cH', '#cW'].forEach((q) => { $(q).value = ''; }); $('#customForm').hidden = true; renderItems();
+};
 
 /* ================= photorealistic render (Cloudflare Workers AI free allowance, through api/render) ================= */
 S.real = {}; S.realOn = false; S.render = false;
@@ -616,6 +684,60 @@ async function makeReal() {
 }
 $('#realBtn').onclick = makeReal;
 
+/* ================= editing a case of the 3D model: type, hanging rail, shelf, merge, move ================= */
+const CELL_TYPES = [['ouvert', 'Ouvert', 'M8 10h32v28H8z'], ['porte', 'Porte', 'M10 6h28v36H10z M32 22v4'], ['tiroir', 'Tiroir', 'M6 14h36v20H6z M18 24h12'],
+  ['caisse', 'Caisse', 'M6 16h36v22H6z M6 24h36 M6 31h36'], ['abattant', 'Abattant', 'M8 12h32v24H8z M8 36l-4 6 M40 36l4 6 M18 30h12']];
+function cellCtx(ref) {
+  const p = currentProp(); if (!p || !ref) return null;
+  const m = p.modules[ref.mi]; const col = m && m.colonnes && m.colonnes[ref.ci]; const k = col && col.cases && col.cases[ref.ri];
+  if (!k) return null;
+  const L = layoutModule(m, zoneFor(m, ref.mi)); const c = L.cells.find((x) => x.key === `${ref.ci}-${ref.ri}`);
+  return c ? { p, m, col, k, L, c } : null;
+}
+function cellRules(L, c) {
+  const w = c.w, h = c.h, D = L.D, mm = (v) => `${R0(v).toLocaleString('fr-FR')} mm`;
+  return {
+    ouvert: '', porte: h < 150 || w < 150 ? `Case trop petite pour une porte (${mm(w)} × ${mm(h)}, il faut 150 mm minimum).` : '',
+    tiroir: h < 80 ? `Case trop basse pour un tiroir : ${mm(h)}, il faut 80 mm minimum.` : h > 450 ? `Case trop haute pour un tiroir : ${mm(h)}, 450 mm maximum. Ajoutez d’abord une étagère.` : w > 1000 ? `Case trop large pour un tiroir : ${mm(w)}, 1 000 mm maximum.` : '',
+    caisse: h < 140 ? `Case trop basse pour une caisse : ${mm(h)}, il faut 140 mm minimum.` : D < 250 ? `Meuble pas assez profond pour une caisse : ${mm(D)}, il faut 250 mm.` : '',
+    abattant: h < 200 ? `Case trop basse pour un abattant : ${mm(h)}, il faut 200 mm minimum.` : h > 800 ? `Case trop haute pour un abattant : ${mm(h)}, 800 mm maximum.` : '',
+    tringle: h < 900 ? `Il faut au moins 900 mm de haut pour une penderie : cette case fait ${mm(h)}. Fusionnez-la avec la case du dessus ou du dessous.` : D < 480 ? `Il faut au moins 480 mm de profondeur pour une penderie : le meuble fait ${mm(D)}.` : '',
+    split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
+  };
+}
+function openCell(ref) { S.selCell = ref; S.cellMsg = ''; renderCell(); if (E.inited) build3D(); }
+function closeCell() { if (!S.selCell) return; S.selCell = null; $('#cellSheet').hidden = true; if (E.inited) build3D(); }
+function renderCell() {
+  const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
+  const { col, k, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
+  const where = n === 1 ? 'seule case' : X.k === col.cases[0] ? 'en bas' : X.k === col.cases[n - 1] ? 'en haut' : `case ${S.selCell.ri + 1} sur ${n}`;
+  const btn = (id, label, extra = '') => `<button type="button" class="cbtn${extra}" data-op="${id}">${label}</button>`;
+  el.innerHTML = `<div class="rowb"><div><b>Colonne ${S.selCell.ci + 1} · ${where}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${k.contenu ? ' · ' + String(k.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="ibtn" id="cellClose" aria-label="Fermer">✕</button></div>
+    <div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${k.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
+    <button type="button" class="switchrow small${rules.tringle && !k.tringle ? ' no' : ''}" role="switch" aria-checked="${!!k.tringle}" data-op="tringle"><span><b>Penderie</b><small>Une tringle pour suspendre des vêtements</small></span><i aria-hidden="true"></i></button>
+    <div class="cops">${btn('split', 'Ajouter une étagère', rules.split ? ' no' : '')}${S.selCell.ri < n - 1 ? btn('mergeUp', 'Fusionner avec le dessus') : ''}${S.selCell.ri > 0 ? btn('mergeDown', 'Fusionner avec le dessous') : ''}${S.selCell.ri < n - 1 ? btn('up', 'Monter') : ''}${S.selCell.ri > 0 ? btn('down', 'Descendre') : ''}${S.selCell.ci > 0 ? btn('left', '← Colonne') : ''}${S.selCell.ci < X.m.colonnes.length - 1 ? btn('right', 'Colonne →') : ''}</div>
+    <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>`;
+  el.hidden = false;
+  $('#cellClose').onclick = closeCell;
+  el.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => cellOp(b.dataset.op); });
+}
+function cellOp(op) {
+  const X = cellCtx(S.selCell); if (!X) return; const { col, k, L, c } = X, rules = cellRules(L, c), ref = S.selCell, cs = col.cases, T = 18;
+  const say = (m) => { S.cellMsg = m; renderCell(); };
+  if (op.startsWith('type:')) { const t = op.slice(5); if (rules[t]) return say(rules[t]); k.type = t; if (t !== 'ouvert' && k.contenu === 'rangement') k.contenu = ''; }
+  else if (op === 'tringle') { if (!k.tringle && rules.tringle) return say(rules.tringle); k.tringle = !k.tringle; if (k.tringle && !k.contenu) k.contenu = 'penderie'; }
+  else if (op === 'split') { if (rules.split) return say(rules.split); const h = (num(k.hauteur_mm) - T) / 2; cs.splice(ref.ri, 1, { ...k, hauteur_mm: h, tringle: false }, { hauteur_mm: h, type: 'ouvert', contenu: '' }); }
+  else if (op === 'mergeUp' || op === 'mergeDown') {
+    const j = op === 'mergeUp' ? ref.ri + 1 : ref.ri - 1, o = cs[j]; if (!o) return;
+    const merged = { ...k, hauteur_mm: num(k.hauteur_mm) + num(o.hauteur_mm) + T, tringle: !!(k.tringle || o.tringle) };
+    cs.splice(Math.min(ref.ri, j), 2, merged); ref.ri = Math.min(ref.ri, j);
+  } else if (op === 'up' || op === 'down') { const j = op === 'up' ? ref.ri + 1 : ref.ri - 1; [cs[ref.ri], cs[j]] = [cs[j], cs[ref.ri]]; ref.ri = j; }
+  else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
+  X.p.edited = true; E.state = {}; S.cellMsg = '';
+  refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
+  $('#pWarn').hidden = !X.p.attention;
+}
+
 /* ================= design: the rules engine computes the three proposals on the phone ================= */
 function initCustom(i) {
   const f = (S.result[i] && S.result[i].finitions) || {}; const ok = (list, id, d) => list.some((x) => x.id === id) ? id : d;
@@ -628,7 +750,7 @@ function generate() {
   S.genZones = S.zones.map((z) => ({ ...z }));
   $('#propTabs').innerHTML = ''; $('#errBox').hidden = true;
   try {
-    S.result = ENG.design({ project: S.project, items: curItems(), zones: S.genZones, fab: S.fab, level: S.level, tools: [...S.tools], shops: [...S.shops], ambiance: S.ambiance });
+    S.result = ENG.design({ project: S.project, items: curItems(), custom: curCustom(), zones: S.genZones, fab: S.fab, level: S.level, tools: [...S.tools], shops: [...S.shops], ambiance: S.ambiance });
     S.result.forEach((_, i) => initCustom(i));
     S.active = 1; renderResult();
   } catch (e) {
@@ -895,7 +1017,7 @@ function linesFor(i) {
 }
 function renderTabs() {
   const tabs = $('#propTabs');
-  if (!tabs.children.length) VARIANTS.forEach((v, i) => { const b = document.createElement('button'); b.type = 'button'; b.onclick = () => { if (S.result[i] && S.active !== i) { S.active = i; E.framed = false; S.nstep = 0; renderResult(); } }; tabs.appendChild(b); });
+  if (!tabs.children.length) VARIANTS.forEach((v, i) => { const b = document.createElement('button'); b.type = 'button'; b.onclick = () => { if (S.result[i] && S.active !== i) { S.active = i; E.framed = false; S.nstep = 0; S.selCell = null; $('#cellSheet').hidden = true; renderResult(); } }; tabs.appendChild(b); });
   [...tabs.children].forEach((b, i) => {
     const ready = !!S.result[i]; b.disabled = !ready; b.setAttribute('aria-pressed', String(i === S.active));
     b.innerHTML = '<span></span><b></b>'; b.querySelector('span').textContent = VARIANTS[i].nom;
@@ -904,7 +1026,7 @@ function renderTabs() {
 }
 function renderResult() {
   const p = currentProp(); renderTabs(); if (!p) return;
-  $('#result').hidden = false;
+  $('#result').hidden = false; if (S.selCell && !cellCtx(S.selCell)) { S.selCell = null; $('#cellSheet').hidden = true; }
   const d = clamp(Math.round(+p.difficulte || 2), 1, 3); $('#pDiff').textContent = ['Facile', 'Moyen', 'Avancé'][d - 1]; $('#pDiff').className = 'pill d' + d;
   $('#pTime').textContent = p.duree || ''; $('#pResume').textContent = p.resume || '';
   const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
@@ -1260,8 +1382,11 @@ function resize3D() {
 function pick(e) {
   const rc = $('#cv3d').getBoundingClientRect();
   const v = new THREE.Vector2(((e.clientX - rc.left) / rc.width) * 2 - 1, -((e.clientY - rc.top) / rc.height) * 2 + 1);
-  E.ray.setFromCamera(v, E.cam); const hit = E.ray.intersectObjects(E.picks, false)[0]; const o = hit && hit.object.userData.owner; if (!o) return;
-  const st = getSt(o.userData.key); st.target = st.target > .5 ? 0 : 1; updateOpenBtn();
+  E.ray.setFromCamera(v, E.cam);
+  const hc = E.ray.intersectObjects(E.cellPicks || [], false)[0];
+  const hit = E.ray.intersectObjects(E.picks, false)[0]; const o = hit && hit.object.userData.owner;
+  if (o) { const st = getSt(o.userData.key); st.target = st.target > .5 ? 0 : 1; updateOpenBtn(); }
+  if (hc) openCell(hc.object.userData.cell); else if (!o) closeCell();
 }
 const viewKeys = () => S.view === '3d' && E.inited ? E.opens.map((o) => o.userData.key) : S.keys2d;
 function updateOpenBtn() { const ks = viewKeys(), b = $('#openAll'); b.hidden = !ks.length; const lab = ks.some((k) => getSt(k).target < .5) ? 'Tout ouvrir' : 'Tout fermer'; b.setAttribute('aria-label', lab); b.title = lab; b.classList.toggle('on', lab === 'Tout fermer'); }
@@ -1297,6 +1422,17 @@ function buildModule(G, L, mi, M, feet) {
   bx(W, L.topT, D + 12, M.mP, 0, H - L.topT, 0, G);
   frontsOf(L, mi).forEach((f) => addFront(G, f, L, M));
   addDetails(G, L);
+  // invisible touch targets, one per case, to open the edit menu
+  L.cells.forEach((c) => {
+    const [ci, ri] = c.key.split('-').map(Number);
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(c.w, c.h), new THREE.MeshBasicMaterial()); pl.visible = false;
+    pl.position.set(c.x + c.w / 2, c.y + c.h / 2, D + 24); pl.userData.cell = { mi, ci, ri }; G.add(pl); E.cellPicks.push(pl);
+    const sc = S.selCell;
+    if (sc && sc.mi === mi && sc.ci === ci && sc.ri === ri) {
+      const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.w + 6, c.h + 6, D + 30)), new THREE.LineBasicMaterial({ color: 0xE9B26B }));
+      box.position.set(c.x + c.w / 2, c.y + c.h / 2, (D + 30) / 2 + 2); G.add(box);
+    }
+  });
 }
 function matsFor(cu) { return { mS: mat(cu.structure), mF: mat(cu.facades), mP: mat(cu.plateau), mH: mat('h:' + cu.hfin), crate: mat('pin'), h: handleById(cu.poignee) }; }
 function addFront(G, f, L, M) {
@@ -1371,7 +1507,7 @@ function placeModules(p) {
 function build3D() {
   if (!E.inited) return; const p = currentProp(), cu = S.custom[S.active]; if (!p || !cu) return;
   while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
-  E.picks = []; E.opens = []; REG = null;
+  E.picks = []; E.opens = []; E.cellPicks = []; REG = null;
   E.scene.background = lin('#141312');
   const M = matsFor(cu), feet = feetById(cu.pieds);
   let maxX = 0, maxY = 0, maxD = 0, tvMod = null;
@@ -1600,7 +1736,7 @@ function writeStore(list) { try { localStorage.setItem(STORE_KEY, JSON.stringify
 let toastT = null;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function snapshot() {
-  return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, itemsBy: S.itemsBy, ambiance: S.ambiance,
+  return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, itemsBy: S.itemsBy, customBy: S.customBy, ambiance: S.ambiance,
     zones: S.zones, level: S.level, tools: [...S.tools], shops: [...S.shops], example: S.example, photo: S.example ? null : (S.photoData || (S.photo && photoDataOf(S.photo))),
     result: S.result, custom: S.custom, active: S.active, genZones: S.genZones, view: S.view };
 }
@@ -1619,7 +1755,7 @@ $('#saveCancel').onclick = () => { $('#saveBar').hidden = true; };
 function loadProject(pj) {
   S.projId = pj.id; S.projName = pj.name || ''; S.project = pj.project || 'tv'; S.fab = pj.fab || 'mixte'; S.level = pj.level || 'bricoleur';
   S.tools = new Set(pj.tools || []); S.shops = new Set(pj.shops || []); S.zones = Array.isArray(pj.zones) ? pj.zones : []; S.sel = 0; S.redraw = null;
-  S.itemsBy = pj.itemsBy && typeof pj.itemsBy === 'object' ? pj.itemsBy : {}; S.ambiance = pj.ambiance || 'bois';
+  S.itemsBy = pj.itemsBy && typeof pj.itemsBy === 'object' ? pj.itemsBy : {}; S.customBy = pj.customBy && typeof pj.customBy === 'object' ? pj.customBy : {}; S.ambiance = pj.ambiance || 'bois';
   S.result = Array.isArray(pj.result) ? pj.result : [null, null, null]; S.custom = Array.isArray(pj.custom) ? pj.custom : [null, null, null];
   S.active = S.result[pj.active] ? pj.active : S.result.findIndex(Boolean); S.genZones = pj.genZones || null; S.view = pj.view || '3d';
   S.custom = S.custom.map((c, i) => (S.result[i] && !c) ? (initCustom(i), S.custom[i]) : c);
@@ -1654,4 +1790,20 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(0);
+if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S };
+/* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
+(function () {
+  const id = new URLSearchParams(location.search).get('shot'); if (!id) return;
+  const P = {
+    tv: [{ tv: 1, platine: 1, box: 1, ampli: 1, vinyles: 1, caisses: 3 }, [2400, 600, 450]],
+    dressing: [{ penderie_l: 1, penderie_c: 2, pulls: 3, tiroirs: 3, chaussures: 1, valises: 1 }, [2400, 2500, 620]],
+    biblio: [{ poches: 2, livres: 4, beaux: 1, deco: 2, ferme: 1 }, [2000, 2300, 350]],
+    escalier: [{ aspirateur: 1, manteaux: 1, chaussures: 2, tiroirs: 2, etageres: 1, pente: 'gauche', h_bas: 900 }, [2400, 2300, 700]],
+    bureau: [{ tiroirs: 3, livres: 1 }, [1700, 2500, 700]],
+    autre: [{ etageres: 3, tiroirs: 2, ferme: 1 }, [1200, 900, 450]] }[id];
+  if (!P) return;
+  S.project = id; S.itemsBy[id] = { ...ENG.defaults(id), ...P[0] }; S.fab = 'sur_mesure'; S.ambiance = 'blanc_bois';
+  S.zones = [{ ...DEFZ, A: P[1][0], B: P[1][1], C: P[1][2], D: 0 }];
+  show(4); generate(); S.active = 2; renderResult(); document.body.classList.add('shot');
+})();
 })();
