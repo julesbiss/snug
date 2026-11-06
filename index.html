@@ -4,116 +4,139 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>SNUG · Meubles sur mesure</title>
-<meta name="description" content="Prenez une photo, mesurez, et recevez trois meubles sur mesure avec la liste de courses et la notice de montage.">
-<meta name="theme-color" content="#2747D9">
+<meta name="description" content="Prenez une photo, mesurez, dites ce qu'il faut ranger : trois meubles sur mesure avec la liste de courses et la notice de montage.">
+<meta name="theme-color" content="#0E0F11">
+<meta name="color-scheme" content="dark">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SNUG">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..800&family=Geist+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="styles.css">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
 </head>
 <body>
 <div class="wrap">
-  <header class="brand">
-    <div class="logo"><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></i>SNUG</div>
-    <div class="hbtns"><button class="btn ghost sm" id="projBtn">Mes projets</button><button class="btn ghost sm" id="saveBtn">Enregistrer</button></div>
+  <header class="top">
+    <div class="logo" aria-label="SNUG">SNUG<i></i></div>
+    <div class="hbtns">
+      <button class="ibtn" id="projBtn" aria-label="Mes projets" title="Mes projets"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><rect x="14" y="15" width="7" height="5" rx="1.5"/></svg></button>
+      <button class="ibtn" id="saveBtn" aria-label="Enregistrer le projet" title="Enregistrer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg></button>
+    </div>
   </header>
   <div class="card" id="saveBar" hidden>
     <label class="lbl" for="saveName">Nom du projet</label>
-    <div class="rowb"><input id="saveName" type="text"><button class="btn primary sm" id="saveOk">Enregistrer</button><button class="btn ghost sm" id="saveCancel">Annuler</button></div>
+    <input id="saveName" type="text">
+    <div class="rowb"><button class="btn ghost sm" id="saveCancel">Annuler</button><button class="btn primary sm" id="saveOk">Enregistrer</button></div>
   </div>
   <nav class="steps" aria-label="Étapes">
-    <button data-go="0">Photo</button><button data-go="1">Cotes</button><button data-go="2">Profil</button><button data-go="3">Résultat</button>
+    <button data-go="0">Projet</button><button data-go="1">Cotes</button><button data-go="2">Contenu</button><button data-go="3">Profil</button><button data-go="4">Résultat</button>
   </nav>
 
   <section data-step="0">
     <div class="col">
-      <div><p class="eyebrow">Étape 1 sur 4</p><h1>Que voulez-vous créer ?</h1></div>
-      <div class="photo"><canvas id="cv0" width="1000" height="700" aria-label="Photo de l'espace"></canvas><span class="badge" id="photoBadge">Photo d'exemple</span></div>
-      <div><label class="btn primary" for="photoIn">Prendre ou choisir une photo</label>
-        <input class="sr" id="photoIn" type="file" accept="image/*" capture="environment"></div>
-      <div class="grid2" id="projects"></div>
-      <div class="col" style="gap:10px">
-        <div><h2 id="itemsTitle">À ranger</h2><p class="muted small" style="margin-top:4px">Dites ce qu'il faut loger : chaque objet reçoit une case à sa taille.</p></div>
-        <div class="items" id="itemList"></div>
-        <div class="col" id="itemOpts" style="gap:12px"></div>
-      </div>
+      <div class="head"><p class="eyebrow">Nouveau projet</p><h1>Que voulez-vous créer&nbsp;?</h1></div>
+      <div class="photo hero"><canvas id="cv0" width="1000" height="700" aria-label="Photo de l'espace"></canvas><span class="badge" id="photoBadge">Photo d'exemple</span>
+        <label class="photobtn" for="photoIn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Prendre une photo</label></div>
+      <input class="sr" id="photoIn" type="file" accept="image/*" capture="environment">
+      <div class="col tight"><p class="sublbl">Type de meuble</p><div class="grid2" id="projects"></div></div>
     </div>
   </section>
 
   <section data-step="1" hidden>
     <div class="col">
-      <div><p class="eyebrow">Étape 2 sur 4</p><h1>Dessinez et mesurez vos zones</h1>
-        <p class="muted small" style="margin-top:6px">Faites glisser le doigt sur la photo pour dessiner une zone. Dessinez-en autant qu'il faut : chaque zone devient un module du meuble, avec ses propres cotes.</p></div>
+      <div class="head"><p class="eyebrow">Les cotes</p><h1>Dessinez et mesurez</h1>
+        <p class="lead">Glissez le doigt sur la photo pour tracer une zone. Chaque zone devient un module, avec ses propres cotes.</p></div>
       <div class="photo"><canvas id="cv1" width="1000" height="700" aria-label="Zones du meuble et cotes à mesurer"></canvas></div>
       <p class="small muted" id="zoneHint"></p>
       <div class="col" id="zoneList" style="gap:10px"></div>
       <p class="warnbox" id="zoneErr" hidden></p>
-      <div class="hint"><span aria-hidden="true">⚠</span><span>Mesurez chaque largeur en haut, au milieu et en bas, et gardez la plus petite valeur.</span></div>
+      <div class="hint"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 12h18M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span>Mesurez chaque largeur en haut, au milieu et en bas, et gardez la plus petite valeur.</span></div>
     </div>
   </section>
 
   <section data-step="2" hidden>
-    <div class="col" style="gap:18px">
-      <div><p class="eyebrow">Étape 3 sur 4</p><h1>Votre façon de bricoler</h1></div>
-      <div class="col" style="gap:10px"><h2>Fabrication</h2><div class="grid3" id="fabs"></div></div>
-      <div class="col" style="gap:10px"><h2>Votre niveau</h2><div class="grid3" id="levels"></div></div>
-      <div class="col" style="gap:10px"><h2>Vos outils</h2><div class="chips" id="tools"></div><p class="muted small">Sans scie, les découpes sont prévues en magasin.</p></div>
-      <div class="col" style="gap:10px"><h2>Vos enseignes</h2><div class="chips" id="shops"></div></div>
-      <div class="col" style="gap:10px"><h2>Style</h2><div class="grid2" id="ambiances"></div><p class="muted small">Vous pourrez changer chaque matière et chaque couleur ensuite.</p></div>
+    <div class="col">
+      <div class="head"><p class="eyebrow" id="itemsEyebrow">Contenu</p><h1 id="itemsTitle">Qu’allez-vous y ranger&nbsp;?</h1>
+        <p class="lead">Touchez pour ajouter. Chaque objet aura une case à sa taille.</p></div>
+      <div class="tiles" id="itemList"></div>
+      <div class="col tight" id="itemOpts"></div>
     </div>
   </section>
 
   <section data-step="3" hidden>
     <div class="col">
-      <div><p class="eyebrow">Étape 4 sur 4</p><h1 id="resTitle">Vos 3 propositions</h1></div>
+      <div class="head"><p class="eyebrow">Votre profil</p><h1>Votre façon de bricoler</h1></div>
+      <div class="col tight"><p class="sublbl">Style</p><div class="grid2" id="ambiances"></div></div>
+      <div class="col tight"><p class="sublbl">Fabrication</p><div class="grid3" id="fabs"></div></div>
+      <div class="col tight"><p class="sublbl">Votre niveau</p><div class="grid3" id="levels"></div></div>
+      <div class="col tight"><p class="sublbl">Vos outils</p><div class="chips" id="tools"></div><p class="muted small">Sans scie, les découpes sont prévues en magasin.</p></div>
+      <div class="col tight"><p class="sublbl">Vos enseignes</p><div class="chips" id="shops"></div></div>
+    </div>
+  </section>
+
+  <section data-step="4" hidden>
+    <div class="col">
       <div class="warnbox" id="errBox" hidden></div>
       <div class="col" id="result" hidden>
         <div class="cfgtop" id="cfgTop">
-          <div class="props" id="propTabs" role="group" aria-label="Propositions"></div>
-          <div class="stage" id="stage3d"><canvas id="cv3d" aria-label="Vue 3D du meuble"></canvas><span class="stagehint" id="hint3d">Glissez pour tourner · touchez une façade pour l’ouvrir</span></div>
-          <div class="photo" id="stagePhoto" hidden><canvas id="cv3" width="1000" height="700" aria-label="Projection du meuble dans la photo"></canvas><span class="stagehint">Touchez une porte, un tiroir ou une caisse pour l’ouvrir</span></div>
-          <div class="viewtools"><div class="seg two mini" id="viewSeg" role="group" aria-label="Affichage"><button type="button" data-view="3d">3D</button><button type="button" data-view="photo">Photo</button></div><span class="price sm" id="pPrice2"></span><span class="sp"></span><button class="btn ghost sm" id="openAll">Tout ouvrir</button><button class="btn ghost sm" id="recenter" aria-label="Recentrer la vue" title="Recentrer la vue">⟲</button></div>
+          <div class="stagewrap">
+            <div class="stage" id="stage3d"><canvas id="cv3d" aria-label="Vue 3D du meuble"></canvas></div>
+            <div class="photo" id="stagePhoto" hidden><canvas id="cv3" width="1000" height="700" aria-label="Projection du meuble dans la photo"></canvas></div>
+            <div class="overlay top">
+              <div class="seg glass" id="viewSeg" role="group" aria-label="Affichage"><button type="button" data-view="3d">3D</button><button type="button" data-view="photo">Chez moi</button></div>
+              <span class="sp"></span>
+              <button class="ibtn glass" id="openAll" aria-label="Tout ouvrir" title="Tout ouvrir"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 12h18M10 8.5h4M10 15.5h4"/></svg></button>
+              <button class="ibtn glass" id="recenter" aria-label="Recentrer la vue" title="Recentrer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/><circle cx="12" cy="12" r="2.5"/></svg></button>
+            </div>
+            <div class="overlay bottom"><span class="stagehint" id="hint3d">Glissez pour tourner · touchez une façade pour l’ouvrir</span><span class="sp"></span><span class="pricechip" id="pPrice2"></span></div>
+          </div>
           <nav class="cfgnav" id="cfgNav" aria-label="Étapes de personnalisation"></nav>
         </div>
         <div class="panes" id="panes">
           <section class="pane" data-pane="modele">
-            <div class="card">
-          <div class="kpis"><span class="price" id="pPrice"></span><span class="pill" id="pTime"></span><span class="pill" id="pDiff"></span></div>
-          <p id="pResume"></p>
-          <p class="muted small" id="pShops"></p>
-          <p class="small" id="pDetails" hidden></p>
-        </div>
+            <div class="variants" id="propTabs" role="group" aria-label="Propositions"></div>
+            <div class="col tight">
+              <div class="pricerow"><span class="price" id="pPrice"></span><span class="meta"><span id="pTime"></span><span class="pill" id="pDiff"></span></span></div>
+              <p class="resume" id="pResume"></p>
+            </div>
+            <div class="dims" id="pDims"></div>
+            <p class="small muted" id="pShops"></p>
+            <p class="small soft" id="pDetails" hidden></p>
             <div class="warnbox" id="pWarn" hidden></div>
-            <div class="card"><h2>Pas envie de monter ?</h2><p class="muted small">Bientôt : un monteur près de chez vous reçoit le plan et la liste exacte.</p></div>
+            <div class="card promo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4"/></svg><div><b>Pas envie de monter&nbsp;?</b><p class="muted small">Bientôt : un monteur près de chez vous reçoit le plan et la liste exacte.</p></div></div>
             <button class="btn ghost" id="newBtn">Commencer un nouveau projet</button>
           </section>
-          <section class="pane" data-pane="matieres" hidden><div class="card"><h2>Matières et couleurs</h2><div class="grp"><p class="glab">Structure <span id="lab-structure"></span></p><div class="sw" data-group="structure"></div></div><div class="grp"><p class="glab">Portes, tiroirs et façades <span id="lab-facades"></span></p><div class="sw" data-group="facades"></div></div><div class="grp"><p class="glab">Plateau <span id="lab-plateau"></span></p><div class="sw" data-group="plateau"></div></div></div></section>
-          <section class="pane" data-pane="pieds" hidden><div class="card"><h2>Pieds et socle</h2><div class="grp" id="grpFeet"><p class="glab">Pieds et socle <span id="lab-feet"></span></p><div class="hgrid" id="fgrid"></div><p class="warnbox" id="feetWarn" hidden></p></div><p class="muted small" id="noFeet" hidden>Ce meuble est fixé au mur ou posé directement au sol : il n’a pas de pieds.</p></div></section>
-          <section class="pane" data-pane="poignees" hidden><div class="card"><h2>Poignées</h2><div class="grp"><p class="glab">Poignées <span id="lab-handle"></span></p><div class="chips" id="hcats"></div><div class="hgrid" id="hgrid"></div></div><div class="grp"><p class="glab">Finition des poignées <span id="lab-hfin"></span></p><div class="sw" data-group="hfin"></div></div></div></section>
-          <section class="pane" data-pane="liste" hidden><div class="card"><div class="rowb"><h2>Liste de courses</h2><button class="btn ghost sm" id="copyBtn">Copier</button></div>
-          <div class="tablewrap"><table><thead><tr><th>Qté</th><th>Article</th><th class="n">Prix est.</th></tr></thead><tbody id="pList"></tbody><tfoot><tr><td></td><td>Total estimé</td><td class="n" id="pTotal"></td></tr></tfoot></table></div>
-          <p class="muted small">Chaque lien ouvre la recherche du produit sur le site de l'enseigne. Prix estimés, à vérifier.</p>
-        </div></section>
-          <section class="pane" data-pane="notice" hidden><div class="card" id="noticeBox">
-          <h2>Notice de montage</h2>
-          <div class="seg four" id="nTabs" role="group" aria-label="Notice"><button type="button" data-tab="steps">Étapes</button><button type="button" data-tab="parts">Pièces</button><button type="button" data-tab="hw">Quincaillerie</button><button type="button" data-tab="tools">Outils</button></div>
-          <div class="col" id="nSteps" style="gap:12px">
-            <div class="stephead"><b id="sTitle"></b><span class="muted small" id="sCount"></span></div>
-            <canvas class="stepcv" id="stepCv" width="720" height="480" aria-label="Illustration de l'étape"></canvas>
-            <div class="col" style="gap:8px" id="sTags"></div>
-            <ol class="instr" id="sInstr"></ol>
-            <div class="slinks" id="sLinks"></div>
-            <div class="stepnav"><button class="btn ghost" id="sPrev">Étape précédente</button><button class="btn primary" id="sNext">Étape suivante</button></div>
-          </div>
-          <div id="nParts" hidden><div class="tablewrap"><table><thead><tr><th>Repère</th><th>Pièce</th><th>Dimensions</th></tr></thead><tbody id="partsBody"></tbody></table></div></div>
-          <div id="nHw" hidden><div class="tablewrap"><table><thead><tr><th>Repère</th><th>Article</th><th class="n">Qté</th></tr></thead><tbody id="hwBody"></tbody></table></div></div>
-          <div id="nTools" hidden><div class="tags" id="toolsBody"></div></div>
-        </div></section>
+          <section class="pane" data-pane="matieres" hidden><div class="col"><h2>Matières et couleurs</h2>
+            <div class="grp"><p class="glab">Structure <span id="lab-structure"></span></p><div class="sw" data-group="structure"></div></div>
+            <div class="grp"><p class="glab">Portes, tiroirs et façades <span id="lab-facades"></span></p><div class="sw" data-group="facades"></div></div>
+            <div class="grp"><p class="glab">Plateau <span id="lab-plateau"></span></p><div class="sw" data-group="plateau"></div></div></div></section>
+          <section class="pane" data-pane="pieds" hidden><div class="col"><h2>Pieds et socle</h2>
+            <div class="grp" id="grpFeet"><p class="glab">Modèle <span id="lab-feet"></span></p><div class="hgrid" id="fgrid"></div><p class="warnbox" id="feetWarn" hidden></p></div>
+            <p class="muted small" id="noFeet" hidden>Ce meuble est fixé au mur ou posé directement au sol : il n’a pas de pieds.</p></div></section>
+          <section class="pane" data-pane="poignees" hidden><div class="col"><h2>Poignées</h2>
+            <div class="grp"><p class="glab">Modèle <span id="lab-handle"></span></p><div class="chips" id="hcats"></div><div class="hgrid" id="hgrid"></div></div>
+            <div class="grp"><p class="glab">Finition <span id="lab-hfin"></span></p><div class="sw" data-group="hfin"></div></div></div></section>
+          <section class="pane" data-pane="liste" hidden><div class="col"><div class="rowb"><h2>Liste de courses</h2><button class="btn ghost sm" id="copyBtn">Copier</button></div>
+            <div class="tablewrap"><table><thead><tr><th>Qté</th><th>Article</th><th class="n">Prix est.</th></tr></thead><tbody id="pList"></tbody><tfoot><tr><td></td><td>Total estimé</td><td class="n" id="pTotal"></td></tr></tfoot></table></div>
+            <p class="muted small">Chaque lien ouvre la recherche du produit sur le site de l'enseigne. Prix estimés, à vérifier.</p></div></section>
+          <section class="pane" data-pane="notice" hidden><div class="col" id="noticeBox">
+            <h2>Notice de montage</h2>
+            <div class="seg four" id="nTabs" role="group" aria-label="Notice"><button type="button" data-tab="steps">Étapes</button><button type="button" data-tab="parts">Pièces</button><button type="button" data-tab="hw">Quincaillerie</button><button type="button" data-tab="tools">Outils</button></div>
+            <div class="col" id="nSteps" style="gap:12px">
+              <div class="stephead"><b id="sTitle"></b><span class="mono muted small" id="sCount"></span></div>
+              <canvas class="stepcv" id="stepCv" width="720" height="480" aria-label="Illustration de l'étape"></canvas>
+              <div class="col" style="gap:8px" id="sTags"></div>
+              <ol class="instr" id="sInstr"></ol>
+              <div class="slinks" id="sLinks"></div>
+              <div class="stepnav"><button class="btn ghost" id="sPrev">Précédente</button><button class="btn primary" id="sNext">Suivante</button></div>
+            </div>
+            <div id="nParts" hidden><div class="tablewrap"><table><thead><tr><th>Repère</th><th>Pièce</th><th>Dimensions</th></tr></thead><tbody id="partsBody"></tbody></table></div></div>
+            <div id="nHw" hidden><div class="tablewrap"><table><thead><tr><th>Repère</th><th>Article</th><th class="n">Qté</th></tr></thead><tbody id="hwBody"></tbody></table></div></div>
+            <div id="nTools" hidden><div class="tags" id="toolsBody"></div></div>
+          </div></section>
         </div>
       </div>
     </div>
