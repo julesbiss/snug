@@ -495,7 +495,7 @@ const SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" strok
 async function aiCall(body) {
   let res; try { res = await fetch('api/assist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); } catch { throw { code: 'offline' }; }
   let d = null; try { d = await res.json(); } catch { throw { code: 'upstream_error' }; }
-  if (!res.ok || !d) throw { code: (d && d.code) || 'upstream_error' }; return d;
+  if (!res.ok || !d) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail }; return d;
 }
 const aiCopy = (code) => code === 'rate_limited' ? 'Le quota gratuit du jour est atteint. Réessayez plus tard ou continuez sans l’IA.'
   : code === 'offline' ? 'Pas de connexion : continuez sans l’IA.' : 'L’IA n’a pas pu répondre. Continuez sans elle, ou réessayez.';
@@ -510,7 +510,7 @@ async function aiPing() {
 function aiCard(el, html) { el.hidden = false; el.innerHTML = html; }
 async function aiPhoto() {
   const el = $('#aiPhoto'); if (!S.ai || S.example || !S.photoData) { el.hidden = true; return; }
-  aiCard(el, `<div class="aihead">${SPARK}<b>Analyse de la photo…</b></div><div class="shimmer"></div><p class="muted small">La photo est envoyée à Google Gemini pour être analysée.</p>`);
+  aiCard(el, `<div class="aihead">${SPARK}<b>Analyse de la photo…</b></div><div class="shimmer"></div>`);
   const shot = S.photo;
   try {
     const d = await aiCall({ task: 'photo', image: S.photoData.split(',')[1], catalogue: aiCatalogue() });
@@ -534,7 +534,7 @@ async function aiPhoto() {
       aiCard(el, `<div class="aihead">${SPARK}<b>Suggestions appliquées</b></div><p class="muted small">Il reste à mesurer : les valeurs grisées sont des estimations.</p>`);
       toast('Suggestions de l’IA appliquées');
     };
-  } catch (e) { if (S.photo === shot) aiCard(el, `<div class="aihead">${SPARK}<b>Analyse indisponible</b></div><p class="muted small">${aiCopy(e && e.code)}</p>`); }
+  } catch (e) { if (S.photo === shot) aiCard(el, `<div class="aihead">${SPARK}<b>Analyse indisponible</b></div><p class="muted small">${aiCopy(e && e.code)}</p>${e && e.detail ? `<p class="mono muted small">${String(e.detail).replace(/[<>&]/g, '')}</p>` : ''}`); }
 }
 function renderAiNotes() {
   const el = $('#aiNotes'); const n = S.aiNotes || [];

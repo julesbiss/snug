@@ -52,9 +52,24 @@ Traduis sa demande en objets à ranger. Réponds UNIQUEMENT avec ce JSON :
 - Une demande vague (« beaucoup de livres ») devient une quantité raisonnable dans les limites (max).`;
 }
 
+const API = 'https://generativelanguage.googleapis.com/v1beta';
+const FALLBACKS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'];
+
+// Open /api/assist?diag=1 in a browser to see whether the key works and which models it can use (the key is never shown).
+async function diag(key) {
+  if (!key) return json({ key: false });
+  try {
+    const r = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
+    const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch {}
+    const models = (d && d.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => m.name.replace('models/', ''));
+    return json({ key: true, keyFormat: key.slice(0, 3) + '…', status: r.status, error: d && d.error ? d.error.message : undefined, models, chosen: process.env.GEMINI_MODEL || null });
+  } catch (e) { return json({ key: true, error: String(e) }); }
+}
+
 export default async function handler(req) {
-  if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   const key = process.env.GEMINI_API_KEY;
+  if (req.method === 'GET' && new URL(req.url).searchParams.has('diag')) return diag(key);
+  if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   let body; try { body = await req.json(); } catch { return json({ code: 'invalid_request' }, 400); }
   if (body.task === 'ping') return json({ ok: !!key });
   if (!key) return json({ code: 'not_configured' }, 503);
@@ -69,16 +84,23 @@ export default async function handler(req) {
     parts.push({ text: textPrompt(body) });
   } else return json({ code: 'invalid_request' }, 400);
 
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-  let res;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST', signal: req.signal,
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
-    });
-  } catch { return json({ code: 'upstream_error' }, 502); }
-  if (!res.ok) return json({ code: res.status === 429 ? 'rate_limited' : 'upstream_error', status: res.status }, res.status === 429 ? 429 : 502);
+  const models = [...new Set([process.env.GEMINI_MODEL, ...FALLBACKS].filter(Boolean))];
+  let res = null, detail = '';
+  for (const model of models) {
+    try {
+      res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST', signal: req.signal,
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
+      });
+    } catch { return json({ code: 'upstream_error', detail: 'network' }, 502); }
+    if (res.ok) break;
+    let msg = ''; try { const e = await res.json(); msg = (e.error && e.error.message) || ''; } catch {}
+    detail = `${model}: ${res.status} ${msg}`.slice(0, 300);
+    if (res.status === 429) return json({ code: 'rate_limited', detail }, 429);
+    if (res.status !== 404 && res.status !== 400) return json({ code: 'upstream_error', detail }, 502); // bad key etc.: trying other models won't help
+  }
+  if (!res || !res.ok) return json({ code: 'upstream_error', detail }, 502);
   let data; try { data = await res.json(); } catch { return json({ code: 'upstream_error' }, 502); }
   const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
   try {
