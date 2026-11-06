@@ -561,6 +561,61 @@ async function aiText() {
 }
 $('#aiGo').onclick = aiText;
 
+/* ================= photorealistic render (Cloudflare Workers AI free allowance, through api/render) ================= */
+S.real = {}; S.realOn = false; S.render = false;
+async function renderPing() {
+  try { const r = await fetch('api/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"task":"ping"}' }); const d = await r.json(); S.render = !!d.ok; } catch { S.render = false; }
+  updateRealBtn();
+}
+function realKey() { return [S.active, JSON.stringify(S.custom[S.active] || {}), S.photo ? S.photo.src.slice(-48) : '', JSON.stringify(S.genZones || [])].join('|'); }
+function updateRealBtn() {
+  const b = $('#realBtn'); b.hidden = !(S.render && S.view === 'photo' && currentProp());
+  const has = !!S.real[realKey()], on = S.realOn && has;
+  b.querySelector('span').textContent = on ? 'Aperçu' : 'Réaliste'; b.setAttribute('aria-pressed', String(on));
+  const img = $('#realImg'); img.hidden = !(S.view === 'photo' && on); $('#cv3').hidden = !img.hidden ? true : false; if (on) img.src = S.real[realKey()];
+}
+function shrinkTo(src, max) {
+  const w0 = src.naturalWidth || src.width, h0 = src.naturalHeight || src.height, k = Math.min(1, max / Math.max(w0, h0));
+  const c = document.createElement('canvas'); c.width = Math.round(w0 * k); c.height = Math.round(h0 * k); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', .88).split(',')[1];
+}
+function productShot() {
+  init3D(); if (!E.ok) return null;
+  build3D(); const keep = { ...E.orbit, target: E.orbit.target.clone() }, W = 496, H = 372;
+  E.r.setSize(W, H, false); E.cam.aspect = W / H; E.cam.updateProjectionMatrix(); frame();
+  const ob = E.orbit, sp = Math.sin(ob.phi);
+  E.cam.position.set(ob.target.x + ob.r * sp * Math.sin(ob.theta), ob.target.y + ob.r * Math.cos(ob.phi), ob.target.z + ob.r * sp * Math.cos(ob.theta));
+  E.cam.lookAt(ob.target); E.r.render(E.scene, E.cam);
+  const out = shrinkTo($('#cv3d'), 504);
+  Object.assign(E.orbit, keep); resize3D();
+  return out;
+}
+const PROJ_EN = { tv: 'a low TV cabinet', dressing: 'a wardrobe', biblio: 'a bookcase', escalier: 'an under-stairs storage unit', bureau: 'a desk with drawers', autre: 'a storage unit' };
+async function makeReal() {
+  const key = realKey();
+  if (S.real[key]) { S.realOn = !S.realOn; updateRealBtn(); return; }
+  const wait = $('#realWait'), btn = $('#realBtn'); if (!wait.hidden) return;
+  wait.hidden = false; $('#realMsg').textContent = 'Création du rendu réaliste… environ 20 secondes';
+  try {
+    const product = productShot(); drawPhotoView(true);
+    if (!product || !S.photo) throw { code: 'upstream_error' };
+    const Ls = currentProp().modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
+    const W = Ls.reduce((a, L) => a + L.W, 0), Hm = Math.max(...Ls.map((L) => L.H));
+    const asp = S.photo.naturalHeight / S.photo.naturalWidth, ow = asp <= 1 ? 1024 : Math.round(1024 / asp), oh = asp <= 1 ? Math.round(1024 * asp) : 1024;
+    const res = await fetch('api/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      images: [shrinkTo(S.photo, 504), shrinkTo($('#cv3'), 504), product], width: ow, height: oh,
+      hint: `${PROJ_EN[S.project] || 'a storage unit'} about ${R0(W)} mm wide and ${R0(Hm)} mm high` }) });
+    const d = await res.json().catch(() => null);
+    if (!d || !d.ok) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail };
+    S.real[key] = 'data:image/png;base64,' + d.image; S.realOn = true; wait.hidden = true; updateRealBtn();
+  } catch (e) {
+    $('#realMsg').textContent = (e && e.code === 'rate_limited' ? 'Le quota gratuit du jour est atteint. Réessayez demain.' : 'Le rendu réaliste n’a pas pu être créé. Réessayez dans un moment.') + (e && e.detail ? ` (${String(e.detail).slice(0, 120)})` : '');
+    setTimeout(() => { wait.hidden = true; }, 6000);
+  }
+  btn.blur();
+}
+$('#realBtn').onclick = makeReal;
+
 /* ================= design: the rules engine computes the three proposals on the phone ================= */
 function initCustom(i) {
   const f = (S.result[i] && S.result[i].finitions) || {}; const ok = (list, id, d) => list.some((x) => x.id === id) ? id : d;
@@ -1363,8 +1418,9 @@ function renderView() {
     init3D(); if (!E.ok) return renderView();
     resize3D(); build3D(); if (!E.framed) { frame(); E.framed = true; } startLoop();
   } else { stopLoop(); drawPhotoView(true); updateOpenBtn(); }
+  updateRealBtn();
 }
-function refreshView() { if (S.view === '3d' && E.inited) build3D(); else { drawPhotoView(true); updateOpenBtn(); } }
+function refreshView() { if (S.view === '3d' && E.inited) build3D(); else { drawPhotoView(true); updateOpenBtn(); } updateRealBtn(); }
 const PH = { scene: null, cam: null, opens: [], picks: [], ok: true };
 function photoLight() {
   try {
@@ -1593,7 +1649,7 @@ function renderProjects() {
 $('#projBtn').onclick = () => { renderProjects(); $('#sheet').hidden = false; stopLoop(); };
 $('#sheetClose').onclick = () => { $('#sheet').hidden = true; if (S.step === 4 && currentProp() && S.view === '3d') startLoop(); };
 
-aiPing();
+aiPing(); renderPing();
 renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();

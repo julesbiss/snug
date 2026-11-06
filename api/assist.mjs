@@ -53,7 +53,7 @@ Traduis sa demande en objets à ranger. Réponds UNIQUEMENT avec ce JSON :
 }
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
-const FALLBACKS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'];
+const FALLBACKS = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'];
 
 // Open /api/assist?diag=1 in a browser to see whether the key works and which models it can use (the key is never shown).
 async function diag(key) {
@@ -115,7 +115,7 @@ export default async function handler(req) {
   async function work() {
     const out = (o) => o;
     const models = [...new Set([process.env.GEMINI_MODEL, ...FALLBACKS].filter(Boolean))];
-    let res = null, detail = '';
+    let res = null, detail = '', limited = false;
     for (const model of models) {
       try {
         res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
@@ -127,10 +127,10 @@ export default async function handler(req) {
       if (res.ok) break;
       let msg = ''; try { const e = await res.json(); msg = (e.error && e.error.message) || ''; } catch {}
       detail = `${model}: ${res.status} ${msg}`.slice(0, 300);
-      if (res.status === 429) return out({ code: 'rate_limited', detail }, 429);
+      if (res.status === 429) { limited = true; continue; } // this model's free quota is used up: try the next one
       if (res.status !== 404 && res.status !== 400) return out({ code: 'upstream_error', detail }, 502); // bad key etc.: trying other models won't help
     }
-    if (!res || !res.ok) return out({ code: 'upstream_error', detail }, 502);
+    if (!res || !res.ok) return out({ code: limited ? 'rate_limited' : 'upstream_error', detail }, 502);
     let data; try { data = await res.json(); } catch { return out({ code: 'upstream_error' }, 502); }
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
     try {

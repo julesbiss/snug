@@ -20,6 +20,7 @@ restent calculés par les règles. Sans clé, ces fonctions sont simplement masq
 | `index.html`, `styles.css`, `app.js` | L'application (une page, sans étape de compilation) |
 | `engine.js` | Le moteur de conception : objets à ranger par projet, caissons du commerce, règles de remplissage, 3 variantes |
 | `api/assist.mjs` | Aide IA facultative : appelle Gemini avec la clé gardée sur le serveur |
+| `api/render.mjs` | Rendu réaliste facultatif : FLUX.2 klein sur Cloudflare Workers AI (quota gratuit quotidien) |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Installation sur l'écran d'accueil du téléphone et fonctionnement hors connexion |
 
 ## Projets pris en charge
@@ -50,6 +51,16 @@ Autre option gratuite : GitHub Pages (Settings → Pages → branche `main`, dos
 
 Offre gratuite : quota limité par jour, et Google peut utiliser les contenus envoyés (photos, textes) pour améliorer ses produits.
 L'appli le signale à l'utilisateur avant l'analyse d'une photo.
+
+### Activer le rendu réaliste (gratuit)
+
+Bouton « Réaliste » dans la vue « Chez moi » : une IA de retouche remplace l'ancien meuble par le nouveau dans la photo.
+Quota gratuit Cloudflare : 10 000 « neurons » par jour, soit environ 60 rendus.
+
+1. Créez un compte gratuit sur dash.cloudflare.com.
+2. Notez l'**Account ID** (page d'accueil du compte, ou Workers & Pages, colonne de droite).
+3. Profil (en haut à droite) → API Tokens → Create Token → modèle « Workers AI » → Create → copiez le jeton.
+4. Sur Vercel : `CF_ACCOUNT_ID` et `CF_API_TOKEN` (type Secret), puis Redeploy.
 
 ## Installer sur un téléphone
 
