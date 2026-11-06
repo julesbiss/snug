@@ -269,7 +269,7 @@ function drawCotes(tmp) {
   const end = (e) => {
     if (!drag) return; const r = rectOf(drag.s, drag.c); const a = drag.s; drag = null;
     if (e.type === 'pointerup' && r.w > .03 && r.h > .03) {
-      if (S.redraw !== null && S.zones[S.redraw]) { Object.assign(S.zones[S.redraw], r); S.sel = S.redraw; S.redraw = null; }
+      if (S.redraw !== null && S.zones[S.redraw]) { Object.assign(S.zones[S.redraw], r, { est: null }); S.sel = S.redraw; S.redraw = null; }
       else { S.zones.push({ ...r, A: '', B: '', C: '', D: 0 }); S.sel = S.zones.length - 1; }
       renderZones();
     } else if (e.type === 'pointerup') {
@@ -292,7 +292,7 @@ function renderZones() {
     [['A', 'Largeur'], ['B', 'Hauteur'], ['C', 'Profondeur'], ['D', 'Distance sol - dessous du meuble']].forEach(([k, l]) => {
       const id = `z${i}${k}`; const row = document.createElement('div'); row.className = 'cote';
       row.innerHTML = `<span class="k">${k}</span><label for="${id}">${l}</label><span class="u"><input id="${id}" type="number" inputmode="numeric" min="0"><span class="muted small">mm</span></span>`;
-      const inp = row.querySelector('input'); inp.value = z[k];
+      const inp = row.querySelector('input'); inp.value = z[k]; if (z.est && +z.est[k] > 0) inp.placeholder = '≈ ' + Math.round(+z.est[k]);
       inp.addEventListener('input', () => { z[k] = inp.value; });
       inp.addEventListener('focus', () => { if (S.sel !== i) { S.sel = i; drawCotes(); document.querySelectorAll('.zonecard').forEach((c, j) => c.classList.toggle('sel', j === i)); } });
       ct.appendChild(row);
@@ -343,7 +343,7 @@ function setPhoto(img, example, after) {
 $('#photoIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
   const img = new Image(); img.src = URL.createObjectURL(f);
-  S.zones = []; S.sel = 0; S.redraw = null; setPhoto(img, false); renderZones();
+  S.zones = []; S.sel = 0; S.redraw = null; S.aiNotes = []; renderAiNotes(); setPhoto(img, false, () => aiPhoto()); renderZones();
 });
 
 /* ================= navigation ================= */
@@ -488,6 +488,78 @@ function renderItems() {
   });
   opts.hidden = !opts.children.length;
 }
+
+/* ================= optional AI helper (Google Gemini free tier, through api/assist) =================
+   It only prepares what the rules engine computes: project type, objects, zone. Without a key the app works as before. */
+const SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+async function aiCall(body) {
+  let res; try { res = await fetch('api/assist', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); } catch { throw { code: 'offline' }; }
+  let d = null; try { d = await res.json(); } catch { throw { code: 'upstream_error' }; }
+  if (!res.ok || !d) throw { code: (d && d.code) || 'upstream_error' }; return d;
+}
+const aiCopy = (code) => code === 'rate_limited' ? 'Le quota gratuit du jour est atteint. Réessayez plus tard ou continuez sans l’IA.'
+  : code === 'offline' ? 'Pas de connexion : continuez sans l’IA.' : 'L’IA n’a pas pu répondre. Continuez sans elle, ou réessayez.';
+function aiCatalogue(only) {
+  const o = {}; PROJECTS.forEach(([id]) => { if (only && id !== only) return; o[id] = ENG.itemsOf(id).map((d) => ({ id: d.id, nom: d.nom, kind: d.kind || '', max: d.max || 1, options: d.options ? d.options.map((x) => x[0]) : undefined })); });
+  return o;
+}
+async function aiPing() {
+  try { const d = await aiCall({ task: 'ping' }); S.ai = !!d.ok; } catch { S.ai = false; }
+  $('#aiText').hidden = !S.ai;
+}
+function aiCard(el, html) { el.hidden = false; el.innerHTML = html; }
+async function aiPhoto() {
+  const el = $('#aiPhoto'); if (!S.ai || S.example || !S.photoData) { el.hidden = true; return; }
+  aiCard(el, `<div class="aihead">${SPARK}<b>Analyse de la photo…</b></div><div class="shimmer"></div><p class="muted small">La photo est envoyée à Google Gemini pour être analysée.</p>`);
+  const shot = S.photo;
+  try {
+    const d = await aiCall({ task: 'photo', image: S.photoData.split(',')[1], catalogue: aiCatalogue() });
+    if (S.photo !== shot) return;
+    const r = d.result || {}, proj = PROJECTS.find((x) => x[0] === r.projet);
+    const objs = Object.entries(r.objets || {}).filter(([k, v]) => proj && ENG.itemsOf(proj[0]).some((i) => i.id === k && !i.kind) && +v > 0);
+    const z = r.zone || {}, zoneOk = [z.x, z.y, z.w, z.h].every((v) => Number.isFinite(+v)) && +z.w > .05 && +z.h > .05;
+    const notes = (Array.isArray(r.remarques) ? r.remarques : []).slice(0, 4).map(String);
+    const lines = [];
+    if (proj) lines.push(`<li>Projet : <b>${proj[1]}</b></li>`);
+    if (objs.length) lines.push(`<li>Déjà là : ${objs.map(([k, v]) => { const it = ENG.itemsOf(proj[0]).find((i) => i.id === k); return (+v > 1 ? v + ' × ' : '') + it.nom.toLowerCase(); }).join(', ')}</li>`);
+    if (zoneOk) lines.push('<li>Zone du meuble tracée sur la photo</li>');
+    notes.forEach((n) => lines.push(`<li class="muted">${n.replace(/[<>&]/g, '')}</li>`));
+    if (!lines.length) { aiCard(el, `<div class="aihead">${SPARK}<b>Rien de particulier repéré</b></div>`); return; }
+    aiCard(el, `<div class="aihead">${SPARK}<b>Repéré par l’IA</b></div><ul class="ailist">${lines.join('')}</ul><div class="rowb"><span class="muted small">Vous gardez la main ensuite.</span><button type="button" class="btn primary sm" id="aiApply">Appliquer</button></div>`);
+    $('#aiApply').onclick = () => {
+      if (proj) S.project = proj[0];
+      const it = curItems(); objs.forEach(([k, v]) => { const def = ENG.itemsOf(S.project).find((i) => i.id === k); it[k] = Math.min(def.max || 1, Math.round(+v)); });
+      if (zoneOk) { const c = (v) => clamp(+v, 0, 1); const zz = { x: c(z.x), y: c(z.y), w: Math.min(c(z.w), 1 - c(z.x)), h: Math.min(c(z.h), 1 - c(z.y)), A: '', B: '', C: '', D: 0, est: r.estimation_mm || null }; S.zones = [zz]; S.sel = 0; }
+      S.aiNotes = notes; renderAiNotes(); renderOptions();
+      aiCard(el, `<div class="aihead">${SPARK}<b>Suggestions appliquées</b></div><p class="muted small">Il reste à mesurer : les valeurs grisées sont des estimations.</p>`);
+      toast('Suggestions de l’IA appliquées');
+    };
+  } catch (e) { if (S.photo === shot) aiCard(el, `<div class="aihead">${SPARK}<b>Analyse indisponible</b></div><p class="muted small">${aiCopy(e && e.code)}</p>`); }
+}
+function renderAiNotes() {
+  const el = $('#aiNotes'); const n = S.aiNotes || [];
+  el.hidden = !n.length; el.innerHTML = n.length ? `${SPARK}<span>${n.map((x) => x.replace(/[<>&]/g, '')).join(' · ')}</span>` : '';
+}
+async function aiText() {
+  const txt = $('#aiIn').value.trim(), out = $('#aiOut'), btn = $('#aiGo'); if (!txt) { $('#aiIn').focus(); return; }
+  btn.disabled = true; btn.textContent = 'Lecture…'; out.hidden = false; out.className = 'small muted'; out.textContent = 'L’IA lit votre demande…';
+  const proj = S.project;
+  try {
+    const d = await aiCall({ task: 'text', project: proj, text: txt, items: aiCatalogue(proj)[proj], current: curItems() });
+    if (S.project !== proj) return;
+    const r = d.result || {}, it = curItems(), changed = [];
+    Object.entries(r.items || {}).forEach(([k, v]) => {
+      const def = ENG.itemsOf(proj).find((i) => i.id === k); if (!def) return;
+      if (def.kind === 'choice') { if (def.options.some((o) => o[0] === v)) it[k] = v; }
+      else if (def.kind === 'number') { if (+v > 0) it[k] = Math.round(+v); }
+      else { const n = clamp(Math.round(+v || 0), 0, def.kind === 'flag' ? 1 : (def.max || 1)); if (n !== num(it[k])) changed.push(def.nom); it[k] = n; }
+    });
+    renderItems();
+    out.className = 'small soft'; out.textContent = [r.resume || (changed.length ? 'Mis à jour : ' + changed.join(', ') + '.' : 'Rien à changer.'), r.non_compris ? 'Pas pris en compte : ' + r.non_compris : ''].filter(Boolean).join(' ');
+  } catch (e) { out.className = 'small warn'; out.textContent = aiCopy(e && e.code); }
+  btn.disabled = false; btn.textContent = 'Comprendre';
+}
+$('#aiGo').onclick = aiText;
 
 /* ================= design: the rules engine computes the three proposals on the phone ================= */
 function initCustom(i) {
@@ -1521,6 +1593,7 @@ function renderProjects() {
 $('#projBtn').onclick = () => { renderProjects(); $('#sheet').hidden = false; stopLoop(); };
 $('#sheetClose').onclick = () => { $('#sheet').hidden = true; if (S.step === 4 && currentProp() && S.view === '3d') startLoop(); };
 
+aiPing();
 renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();

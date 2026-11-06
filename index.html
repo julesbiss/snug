@@ -41,6 +41,7 @@
       <div class="photo hero"><canvas id="cv0" width="1000" height="700" aria-label="Photo de l'espace"></canvas><span class="badge" id="photoBadge">Photo d'exemple</span>
         <label class="photobtn" for="photoIn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Prendre une photo</label></div>
       <input class="sr" id="photoIn" type="file" accept="image/*" capture="environment">
+      <div class="card aicard" id="aiPhoto" hidden aria-live="polite"></div>
       <div class="col tight"><p class="sublbl">Type de meuble</p><div class="grid2" id="projects"></div></div>
     </div>
   </section>
@@ -51,6 +52,7 @@
         <p class="lead">Glissez le doigt sur la photo pour tracer une zone. Chaque zone devient un module, avec ses propres cotes.</p></div>
       <div class="photo"><canvas id="cv1" width="1000" height="700" aria-label="Zones du meuble et cotes à mesurer"></canvas></div>
       <p class="small muted" id="zoneHint"></p>
+      <div class="hint ainote" id="aiNotes" hidden></div>
       <div class="col" id="zoneList" style="gap:10px"></div>
       <p class="warnbox" id="zoneErr" hidden></p>
       <div class="hint"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 12h18M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span>Mesurez chaque largeur en haut, au milieu et en bas, et gardez la plus petite valeur.</span></div>
@@ -61,6 +63,11 @@
     <div class="col">
       <div class="head"><p class="eyebrow" id="itemsEyebrow">Contenu</p><h1 id="itemsTitle">Qu’allez-vous y ranger&nbsp;?</h1>
         <p class="lead">Touchez pour ajouter. Chaque objet aura une case à sa taille.</p></div>
+      <div class="card aicard" id="aiText" hidden>
+        <label class="aihead" for="aiIn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><b>Ou dites-le avec vos mots</b></label>
+        <textarea id="aiIn" rows="2" placeholder="Ex. : cacher la box et l’ampli, une place pour 60 vinyles, et le robot doit passer dessous"></textarea>
+        <div class="rowb"><p class="small muted" id="aiOut" hidden aria-live="polite"></p><span class="sp"></span><button type="button" class="btn primary sm" id="aiGo">Comprendre</button></div>
+      </div>
       <div class="tiles" id="itemList"></div>
       <div class="col tight" id="itemOpts"></div>
     </div>

@@ -4,8 +4,12 @@ Prenez une photo d'un espace, dessinez et mesurez les zones, dites ce qu'il faut
 vue 3D, rendu dans la photo, personnalisation (matières, pieds, poignées), liste de courses avec liens,
 et notice de montage détaillée.
 
-L'appli est **100 % indépendante** : aucune IA, aucun serveur, aucune clé API. Tout est calculé sur le téléphone,
-instantanément, par un moteur de règles (`engine.js`). Elle fonctionne même hors connexion une fois installée.
+La conception est faite sur le téléphone, instantanément, par un moteur de règles (`engine.js`) : aucune IA n'est nécessaire,
+et l'appli fonctionne même hors connexion une fois installée.
+
+En option, une **aide IA gratuite** (Google Gemini, offre gratuite) lit la photo — type de meuble, objets présents, zone à mesurer,
+obstacles — et comprend une demande écrite avec ses mots. Elle prépare seulement ce que le moteur calcule : cotes, prix et notice
+restent calculés par les règles. Sans clé, ces fonctions sont simplement masquées.
 
 « SNUG » est un nom de code : le nom public reste à choisir (des marques « Snug » existent déjà en classes 9, 20 et 42).
 
@@ -15,6 +19,7 @@ instantanément, par un moteur de règles (`engine.js`). Elle fonctionne même h
 | --- | --- |
 | `index.html`, `styles.css`, `app.js` | L'application (une page, sans étape de compilation) |
 | `engine.js` | Le moteur de conception : objets à ranger par projet, caissons du commerce, règles de remplissage, 3 variantes |
+| `api/assist.mjs` | Aide IA facultative : appelle Gemini avec la clé gardée sur le serveur |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Installation sur l'écran d'accueil du téléphone et fonctionnement hors connexion |
 
 ## Projets pris en charge
@@ -35,7 +40,16 @@ Les dimensions des caissons et tous les prix sont des **estimations** : les lien
 2. « Add New… → Project », choisissez le dépôt `snug`, puis « Deploy ». Aucun réglage, aucune variable d'environnement.
 3. Partagez le lien obtenu (du type `snug-xxx.vercel.app`) à vos testeurs.
 
-Autre option gratuite : GitHub Pages (Settings → Pages → branche `main`, dossier racine).
+Autre option gratuite : GitHub Pages (Settings → Pages → branche `main`, dossier racine), sans l'aide IA.
+
+### Activer l'aide IA (gratuit)
+
+1. Sur aistudio.google.com, connectez-vous avec un compte Google et créez une clé API (« Get API key »). Aucune carte bancaire.
+2. Sur Vercel : Settings → Environment Variables → `GEMINI_API_KEY` = la clé. Facultatif : `GEMINI_MODEL` (par défaut `gemini-3.8-flash`).
+3. Deployments → Redeploy.
+
+Offre gratuite : quota limité par jour, et Google peut utiliser les contenus envoyés (photos, textes) pour améliorer ses produits.
+L'appli le signale à l'utilisateur avant l'analyse d'une photo.
 
 ## Installer sur un téléphone
 

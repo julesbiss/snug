@@ -251,4 +251,16 @@ ol.instr li::marker{color:var(--accent);font-family:var(--f-num)}
 .proj .acts{display:flex;flex-direction:column;gap:6px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:30;background:var(--fg);color:var(--bg);padding:11px 18px;border-radius:999px;font-weight:600;font-size:14px;max-width:calc(100% - 32px)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-@media (prefers-reduced-motion: reduce){.panes .pane{animation:none}}
+/* AI helper */
+.aicard{border-color:rgba(233,178,107,.35);background:linear-gradient(160deg,rgba(233,178,107,.08),var(--surface) 55%)}
+.aihead{display:flex;align-items:center;gap:8px;color:var(--accent);font-size:14.5px}
+.aihead b{color:var(--fg);font-weight:600}
+.ailist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font-size:14px;color:var(--soft-fg)}
+.ailist li::marker{color:var(--accent)}
+.aicard .rowb .sp{flex:1}
+.aicard textarea{min-height:64px;resize:vertical}
+.ainote{color:var(--soft-fg)}
+.warn{color:var(--warn)}
+.shimmer{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--surface2) 0%,rgba(233,178,107,.35) 50%,var(--surface2) 100%);background-size:200% 100%;animation:shim 1.2s linear infinite}
+@keyframes shim{from{background-position:200% 0}to{background-position:-200% 0}}
+@media (prefers-reduced-motion: reduce){.panes .pane{animation:none}.shimmer{animation:none}}
