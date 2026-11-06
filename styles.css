@@ -148,7 +148,7 @@ textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .seg.glass button[aria-pressed="true"]{color:var(--bg)}
 
 /* result: stage */
-.cfgtop{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;background:var(--bg);display:flex;flex-direction:column;gap:12px;padding-bottom:12px;margin-left:calc(-1 * max(18px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(18px,env(safe-area-inset-right,0px)));min-width:0}
+.cfgtop{position:relative;background:var(--bg);display:flex;flex-direction:column;gap:12px;margin-left:calc(-1 * max(18px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(18px,env(safe-area-inset-right,0px)));min-width:0}
 .stagewrap{position:relative}
 .stage{position:relative;overflow:hidden;background:#141312}
 .stage canvas{display:block;width:100%;touch-action:none;cursor:grab}
@@ -161,7 +161,10 @@ textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .overlay .sp{flex:1}
 .stagehint{font-size:11.5px;color:var(--soft-fg);background:rgba(14,15,17,.55);padding:5px 10px;border-radius:999px;pointer-events:none;max-width:60%}
 .pricechip{font-family:var(--f-num);font-weight:600;font-size:15px;color:var(--fg);background:rgba(14,15,17,.7);border:1px solid rgba(255,255,255,.08);padding:6px 12px;border-radius:999px}
-.cfgnav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:1px max(18px,env(safe-area-inset-left,0px))}
+.navbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;background:var(--bg);display:flex;align-items:center;gap:6px;margin-top:-8px;padding:10px 0;margin-left:calc(-1 * max(18px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(18px,env(safe-area-inset-right,0px)));padding-left:max(18px,env(safe-area-inset-left,0px));border-bottom:1px solid transparent;transition:border-color .2s}
+.navbar.stuck{border-bottom-color:var(--line)}
+.navbar .to3d{flex:none;width:38px;height:38px;color:var(--accent)}
+.cfgnav{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:1px max(18px,env(safe-area-inset-right,0px)) 1px 0}
 .cfgnav::-webkit-scrollbar{display:none}
 .cfgnav button{all:unset;cursor:pointer;flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 14px 0 7px;border-radius:19px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;color:var(--muted)}
 .cfgnav button i{font-style:normal;width:24px;height:24px;border-radius:12px;background:var(--surface2);color:var(--soft-fg);display:grid;place-items:center;font-size:11.5px;font-weight:600;font-family:var(--f-num)}

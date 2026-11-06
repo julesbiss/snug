@@ -683,6 +683,12 @@ async function makeReal() {
   btn.blur();
 }
 $('#realBtn').onclick = makeReal;
+// Result screen: the 3D view scrolls away with the page; a small button in the sticky bar brings it back.
+$('#to3d').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+window.addEventListener('scroll', () => {
+  if (S.step !== 4) return; const st = $('#cfgTop').getBoundingClientRect().bottom < 40;
+  $('#to3d').hidden = !st; document.querySelector('.navbar').classList.toggle('stuck', st);
+}, { passive: true });
 
 /* ================= editing a case of the 3D model: type, hanging rail, shelf, merge, move ================= */
 const CELL_TYPES = [['ouvert', 'Ouvert', 'M8 10h32v28H8z'], ['porte', 'Porte', 'M10 6h28v36H10z M32 22v4'], ['tiroir', 'Tiroir', 'M6 14h36v20H6z M18 24h12'],
@@ -1060,7 +1066,7 @@ function goPane(id, dir) {
   document.querySelectorAll('#panes .pane').forEach((p) => { const on = p.dataset.pane === id; p.hidden = !on; if (on) { p.classList.toggle('back', dir < 0); p.style.animation = 'none'; void p.offsetWidth; p.style.animation = ''; } });
   renderCfgNav();
   if (id === 'notice') renderNotice();
-  const top = $('#panes').getBoundingClientRect().top + window.scrollY - $('#cfgTop').offsetHeight - 8;
+  const top = $('#panes').getBoundingClientRect().top + window.scrollY - $('.navbar').offsetHeight - 12;
   if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top) });
 }
 (function () {
