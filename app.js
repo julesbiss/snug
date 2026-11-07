@@ -228,67 +228,94 @@ function badge(g, x, y, t, r) {
   g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = '#0E0F11'; g.fill(); g.lineWidth = r * .16; g.strokeStyle = '#E9B26B'; g.stroke();
   g.fillStyle = '#E9B26B'; g.font = `700 ${Math.round(r * 1.05)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + r * .06); g.restore();
 }
-/* Arrows are drawn INSIDE each zone with letter badges sized for the screen, so they stay readable on a phone. */
+/* Zones on the photo: the selected one has round handles in its corners and labelled dimensions that can be tapped. */
+const fmtMM = (v) => (pos(v) ? R0(pos(v)).toLocaleString('fr-FR') : '?');
+function pill(g, x, y, txt, k, strong) {
+  g.font = `700 ${Math.round(12.5 * k)}px "Geist", system-ui, sans-serif`;
+  const w = g.measureText(txt).width + 16 * k, h = 24 * k;
+  g.fillStyle = strong ? '#E9B26B' : 'rgba(14,15,17,.85)'; rr(g, x - w / 2, y - h / 2, w, h, h / 2); g.fill();
+  if (!strong) { g.strokeStyle = '#E9B26B'; g.lineWidth = 1.2 * k; g.stroke(); }
+  g.fillStyle = strong ? '#17130C' : '#F2F1EE'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, x, y + .5 * k);
+  return { x: x - w / 2, y: y - h / 2, w, h };
+}
 function drawZonesOn(g, W, H, zones, sel, full, k) {
-  k = k || 1;
+  k = k || 1; const labels = [];
   zones.forEach((z, i) => {
     const x = z.x * W, y = z.y * H, w = z.w * W, h = z.h * H, on = !full && i === sel;
     g.save();
-    g.fillStyle = on ? 'rgba(233,178,107,.16)' : 'rgba(233,178,107,.07)'; g.fillRect(x, y, w, h);
-    g.setLineDash([8 * k, 6 * k]); g.strokeStyle = '#E9B26B'; g.lineWidth = (on ? 2.5 : 1.6) * k; g.strokeRect(x, y, w, h); g.setLineDash([]);
+    g.fillStyle = on ? 'rgba(233,178,107,.18)' : 'rgba(233,178,107,.08)'; g.fillRect(x, y, w, h);
+    if (on) { g.strokeStyle = '#E9B26B'; g.lineWidth = 2.4 * k; g.strokeRect(x, y, w, h); }
+    else { g.setLineDash([7 * k, 5 * k]); g.strokeStyle = 'rgba(233,178,107,.8)'; g.lineWidth = 1.5 * k; g.strokeRect(x, y, w, h); g.setLineDash([]); }
     if (on) {
-      const br = Math.min(14 * k, Math.min(w, h) * .2), m = br + 8 * k, hs = 7 * k;
-      g.strokeStyle = '#E9B26B'; g.fillStyle = '#E9B26B'; g.lineWidth = 2.6 * k;
-      arrow(g, x + 6 * k, y + h - m, x + w - 6 * k, y + h - m, hs);
-      arrow(g, x + w - m, y + 6 * k, x + w - m, y + h - 6 * k, hs);
-      const dl = Math.min(Math.min(w, h) * .35, 46 * k), cx0 = x + m + 6 * k, cy0 = y + h - m - br - 10 * k;
-      if (cy0 - dl > y + br) arrow(g, cx0, cy0, cx0 + dl, cy0 - dl, hs);
-      badge(g, x + w / 2, y + h - m, 'A', br);
-      badge(g, x + w - m, y + h / 2, 'B', br);
-      if (cy0 - dl > y + br) badge(g, cx0 + dl / 2 + br * .9, cy0 - dl / 2 + br * .5, 'C', br * .9);
+      g.strokeStyle = '#E9B26B'; g.fillStyle = '#E9B26B'; g.lineWidth = 2 * k; const hs = 6 * k, m = 22 * k;
+      if (w > 120 * k) { arrow(g, x + 16 * k, y + h - m, x + w - 16 * k, y + h - m, hs); labels.push({ zone: i, key: 'A', r: pill(g, x + w / 2, y + h - m, `A  ${fmtMM(z.A)}`, k, !pos(z.A)) }); }
+      if (h > 90 * k) { arrow(g, x + w - m, y + 16 * k, x + w - m, y + h - 16 * k, hs); labels.push({ zone: i, key: 'B', r: pill(g, x + w - m, y + h / 2, `B  ${fmtMM(z.B)}`, k, !pos(z.B)) }); }
+      labels.push({ zone: i, key: 'C', r: pill(g, x + Math.max(60 * k, Math.min(w * .3, 80 * k)), y + Math.min(h * .3, 30 * k), `C  ${fmtMM(z.C)}`, k, !pos(z.C)) });
+      [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([hx, hy]) => {
+        g.beginPath(); g.arc(hx, hy, 11 * k, 0, Math.PI * 2); g.fillStyle = '#E9B26B'; g.fill(); g.lineWidth = 3 * k; g.strokeStyle = '#0E0F11'; g.stroke();
+      });
     }
-    const r = 12 * k, cx = x + r + 6 * k, cy = y + r + 6 * k;
+    const r = 11 * k, cx = x + (on ? 26 * k : r + 6 * k), cy = y + (on ? 26 * k : r + 6 * k);
     g.fillStyle = '#E9B26B'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#17130C'; g.font = `700 ${Math.round(r * 1.1)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), cx, cy + r * .06);
     g.restore();
   });
+  return labels;
 }
-function drawCotes(tmp) {
-  const cv = $('#cv1'); const g = drawPhoto(cv); const k = cv.width / Math.max(200, cv.clientWidth || 360); drawZonesOn(g, cv.width, cv.height, S.zones, S.sel, false, k);
-  if (tmp) { g.save(); g.setLineDash([8, 6]); g.strokeStyle = '#E9B26B'; g.lineWidth = 3; g.strokeRect(tmp.x * cv.width, tmp.y * cv.height, tmp.w * cv.width, tmp.h * cv.height); g.restore(); }
+function drawCotes() {
+  const cv = $('#cv1'); const g = drawPhoto(cv); const k = cv.width / Math.max(200, cv.clientWidth || 360);
+  S.zoneLabels = drawZonesOn(g, cv.width, cv.height, S.zones, S.sel, false, k) || [];
 }
 
 /* ================= zones ================= */
-// Touching the photo scrolls the page; a zone is drawn only after "Tracer une zone" (or when there is none yet).
+// The zone is a frame you move with the finger and resize by its corners. Touching elsewhere scrolls the page.
+function newZone() {
+  const n = S.zones.length, z = n ? { x: clamp(.25 + n * .05, 0, .55), y: clamp(.3 + n * .05, 0, .6), w: .4, h: .3 } : { x: .12, y: .48, w: .76, h: .32 };
+  S.zones.push({ ...z, A: '', B: '', C: '', D: 0 }); S.sel = S.zones.length - 1;
+}
 (function () {
-  const cv = $('#cv1'); let drag = null, tap = null;
-  const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: clamp((e.clientX - r.left) / r.width, 0, 1), y: clamp((e.clientY - r.top) / r.height, 0, 1) }; };
-  const rectOf = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
+  const cv = $('#cv1'); let act = null;
+  const pt = (cx, cy) => { const r = cv.getBoundingClientRect(); return { x: clamp((cx - r.left) / r.width, 0, 1), y: clamp((cy - r.top) / r.height, 0, 1), sx: cv.width / r.width, rx: cx - r.left, ry: cy - r.top }; };
+  function hitTest(cx, cy) {
+    const p = pt(cx, cy), k = p.sx, X = p.rx * k, Y = p.ry * k, W = cv.width, H = cv.height;
+    for (const l of S.zoneLabels || []) if (X >= l.r.x - 4 * k && X <= l.r.x + l.r.w + 4 * k && Y >= l.r.y - 6 * k && Y <= l.r.y + l.r.h + 6 * k) return { type: 'label', l };
+    const z = S.zones[S.sel];
+    if (z) for (const [c, hx, hy] of [['tl', z.x, z.y], ['tr', z.x + z.w, z.y], ['bl', z.x, z.y + z.h], ['br', z.x + z.w, z.y + z.h]]) if (Math.hypot(X - hx * W, Y - hy * H) < 26 * k) return { type: 'corner', c, i: S.sel };
+    for (let i = S.zones.length - 1; i >= 0; i--) { const q = S.zones[i]; if (p.x >= q.x && p.x <= q.x + q.w && p.y >= q.y && p.y <= q.y + q.h) return { type: 'move', i }; }
+    return null;
+  }
+  // the page scrolls normally, except when the finger lands on a zone
+  cv.addEventListener('touchstart', (e) => { const t = e.touches[0]; if (t && hitTest(t.clientX, t.clientY)) e.preventDefault(); }, { passive: false });
   cv.addEventListener('pointerdown', (e) => {
-    if (!S.drawMode) { tap = { x: e.clientX, y: e.clientY, p: pt(e) }; return; }
-    drag = { s: pt(e), c: pt(e) }; cv.setPointerCapture(e.pointerId);
+    const h = hitTest(e.clientX, e.clientY); if (!h) return;
+    if (h.type === 'label') { act = { h, x0: e.clientX, y0: e.clientY }; return; }
+    if (h.i !== S.sel) { S.sel = h.i; renderZones(); }
+    const z = S.zones[h.i]; act = { h, start: pt(e.clientX, e.clientY), z0: { x: z.x, y: z.y, w: z.w, h: z.h }, x0: e.clientX, y0: e.clientY };
+    cv.setPointerCapture(e.pointerId); $('.zonetip').hidden = true; drawCotes();
   });
-  cv.addEventListener('pointermove', (e) => { if (!drag) return; drag.c = pt(e); const r = rectOf(drag.s, drag.c); if (r.w > .02 || r.h > .02) drawCotes(r); });
-  const end = (e) => {
-    if (tap) { // simple tap: select the zone under the finger
-      const t = tap; tap = null;
-      if (e.type === 'pointerup' && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10) {
-        for (let i = S.zones.length - 1; i >= 0; i--) { const z = S.zones[i]; if (t.p.x >= z.x && t.p.x <= z.x + z.w && t.p.y >= z.y && t.p.y <= z.y + z.h) { S.sel = i; renderZones(); drawCotes(); break; } }
-      }
-      return;
+  cv.addEventListener('pointermove', (e) => {
+    if (!act || act.h.type === 'label') return; const p = pt(e.clientX, e.clientY), z = S.zones[act.h.i], o = act.z0;
+    const dx = p.x - act.start.x, dy = p.y - act.start.y, MIN = .06;
+    if (act.h.type === 'move') { z.x = clamp(o.x + dx, 0, 1 - o.w); z.y = clamp(o.y + dy, 0, 1 - o.h); }
+    else {
+      let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h; const c = act.h.c;
+      if (c[1] === 'l') x1 = clamp(o.x + dx, 0, x2 - MIN); else x2 = clamp(o.x + o.w + dx, x1 + MIN, 1);
+      if (c[0] === 't') y1 = clamp(o.y + dy, 0, y2 - MIN); else y2 = clamp(o.y + o.h + dy, y1 + MIN, 1);
+      Object.assign(z, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
     }
-    if (!drag) return; const r = rectOf(drag.s, drag.c); drag = null;
-    if (e.type === 'pointerup' && r.w > .03 && r.h > .03) {
-      if (S.redraw !== null && S.zones[S.redraw]) { Object.assign(S.zones[S.redraw], r, { est: null }); S.sel = S.redraw; S.redraw = null; }
-      else { S.zones.push({ ...r, A: '', B: '', C: '', D: 0 }); S.sel = S.zones.length - 1; }
-      S.drawMode = false; renderZones();
-      setTimeout(() => { const c = document.querySelectorAll('.zonecard')[S.sel]; if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
+    drawCotes();
+  });
+  const end = (e) => {
+    if (!act) return; const a = act; act = null;
+    if (a.h.type === 'label' && e.type === 'pointerup' && Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 10) {
+      S.sel = a.h.l.zone; renderZones(); drawCotes();
+      const inp = $(`#z${a.h.l.zone}${a.h.l.key}`); if (inp) { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => inp.focus(), 300); }
+      return;
     }
     drawCotes();
   };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-  $('#drawBtn').onclick = () => { S.drawMode = true; S.redraw = null; renderZones(); $('#cv1').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
-  $('#drawCancel').onclick = () => { S.drawMode = false; S.redraw = null; renderZones(); drawCotes(); };
+  $('#drawBtn').onclick = () => { newZone(); renderZones(); drawCotes(); $('#cv1').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 })();
 const DIM_SVG = `<svg class="dimsvg" viewBox="0 0 300 186" role="img" aria-label="A largeur, B hauteur, C profondeur, D hauteur au-dessus du sol">
   <line x1="8" y1="176" x2="292" y2="176" stroke="#4A4E55" stroke-width="2"/>
@@ -311,27 +338,20 @@ const DIMS = [['A', 'Largeur', 'La place disponible, d’un bord à l’autre'],
   ['C', 'Profondeur', 'Depuis le mur, sans gêner le passage'], ['D', 'Hauteur au-dessus du sol', '0 si le meuble est posé au sol']];
 function renderZones() {
   const box = $('#zoneList'); box.innerHTML = '';
-  const drawing = !!S.drawMode || S.redraw !== null;
-  $('#cv1').parentElement.classList.toggle('drawing', drawing);
-  $('#drawBanner').hidden = !drawing;
-  $('#drawMsg').textContent = S.redraw !== null ? `Glissez le doigt pour retracer la zone ${S.redraw + 1}` : 'Glissez le doigt sur la photo pour tracer la zone du meuble';
-  $('#drawCancel').hidden = !S.zones.length;
-  $('#drawBtn').hidden = drawing; $('#drawBtn').lastChild.textContent = S.zones.length ? 'Ajouter une zone' : 'Tracer la zone du meuble';
-  $('#zoneHint').textContent = S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone sur la photo pour la sélectionner.` : '';
+  $('#zoneHint').textContent = S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone pour la sélectionner.` : '';
   S.zones.forEach((z, i) => {
     const card = document.createElement('div'); card.className = 'card zonecard' + (i === S.sel ? ' sel' : '');
-    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link" data-act="redraw">Retracer</button><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<div class="cotes"></div>`;
+    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<div class="cotes"></div>`;
     const ct = card.querySelector('.cotes');
     DIMS.forEach(([k, l, sub]) => {
       const id = `z${i}${k}`; const row = document.createElement('div'); row.className = 'cote';
       row.innerHTML = `<span class="k">${k}</span><label for="${id}"><b>${l}</b><small>${sub}</small></label><span class="u"><input id="${id}" type="number" inputmode="numeric" min="0" placeholder="0"><span>mm</span></span>`;
       const inp = row.querySelector('input'); inp.value = z[k]; if (z.est && +z.est[k] > 0) inp.placeholder = '≈ ' + Math.round(+z.est[k]);
-      inp.addEventListener('input', () => { z[k] = inp.value; });
+      inp.addEventListener('input', () => { z[k] = inp.value; drawCotes(); });
       inp.addEventListener('focus', () => { if (S.sel !== i) { S.sel = i; drawCotes(); document.querySelectorAll('.zonecard').forEach((c, j) => c.classList.toggle('sel', j === i)); } });
       ct.appendChild(row);
     });
-    card.querySelector('[data-act=redraw]').onclick = () => { S.redraw = i; S.sel = i; S.drawMode = true; renderZones(); drawCotes(); $('#cv1').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
-    card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); S.redraw = null; if (!S.zones.length) S.drawMode = true; renderZones(); drawCotes(); };
+    card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); if (!S.zones.length) newZone(); S.sel = clamp(S.sel, 0, S.zones.length - 1); renderZones(); drawCotes(); };
     box.appendChild(card);
   });
 }
@@ -378,7 +398,7 @@ function setPhoto(img, example, after) {
 $('#photoIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
   const img = new Image(); img.src = URL.createObjectURL(f);
-  S.zones = []; S.sel = 0; S.redraw = null; S.aiNotes = []; renderAiNotes(); setPhoto(img, false, () => aiPhoto()); renderZones();
+  S.zones = []; S.sel = 0; S.aiNotes = []; renderAiNotes(); setPhoto(img, false, () => aiPhoto()); renderZones();
 });
 
 /* ================= navigation ================= */
@@ -390,7 +410,7 @@ function show(step) {
   $('#nextBtn').textContent = step === 3 ? 'Voir mes 3 meubles' : (step === 4 ? 'Nouveau projet' : 'Continuer');
   $('#backBtn').textContent = 'Retour';
   if (step === 0) drawPhoto($('#cv0'));
-  if (step === 1) { if (!S.zones.length) S.drawMode = true; renderZones(); drawCotes(); }
+  if (step === 1) { if (!S.zones.length) newZone(); renderZones(); requestAnimationFrame(drawCotes); }
   if (step === 2) renderItems();
   if (step === 4 && currentProp()) renderResult(); else stopLoop();
   if (step !== 4) { S.selCell = null; $('#cellSheet').hidden = true; }
@@ -791,7 +811,14 @@ function cellRules(L, c) {
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
   };
 }
-function openCell(ref) { S.selCell = ref; S.cellMsg = ''; renderCell(); if (E.inited) build3D(); }
+function openCell(ref) { S.selCell = ref; S.cellMsg = ''; setEditMode(false, true); renderCell(); if (E.inited) build3D(); }
+// "Modifier" mode: frames every case and explains that a case can be touched. Shown once automatically.
+function setEditMode(on, quiet) {
+  S.showCells = !!on; $('#editBtn').setAttribute('aria-pressed', String(S.showCells)); $('#editTip').hidden = !S.showCells;
+  clearTimeout(S.editT); if (on) S.editT = setTimeout(() => setEditMode(false), 6000);
+  if (!quiet && E.inited && S.view === '3d') build3D();
+}
+$('#editBtn').onclick = () => { if (S.view !== '3d') { S.view = '3d'; renderView(); } setEditMode(!S.showCells); };
 function closeCell() { if (!S.selCell) return; S.selCell = null; $('#cellSheet').hidden = true; if (E.inited) build3D(); }
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
@@ -819,7 +846,7 @@ function cellOp(op) {
     cs.splice(Math.min(ref.ri, j), 2, merged); ref.ri = Math.min(ref.ri, j);
   } else if (op === 'up' || op === 'down') { const j = op === 'up' ? ref.ri + 1 : ref.ri - 1; [cs[ref.ri], cs[j]] = [cs[j], cs[ref.ri]]; ref.ri = j; }
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
-  X.p.edited = true; E.state = {}; S.cellMsg = '';
+  X.p.edited = true; E.state = {}; S.cellMsg = ''; try { localStorage.setItem('snug.edited', '1'); } catch {}
   refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
   $('#pWarn').hidden = !X.p.attention;
 }
@@ -1127,6 +1154,8 @@ function renderResult() {
   document.querySelectorAll('#panes .pane').forEach((x) => { x.hidden = x.dataset.pane !== S.pane; });
   renderCfgNav();
   renderView();
+  let seen = false; try { seen = !!localStorage.getItem('snug.edited'); } catch {}
+  if (!seen && !S.tipShown && S.view === '3d') { S.tipShown = true; setTimeout(() => { if (S.step === 4 && !S.selCell) setEditMode(true); }, 900); }
 }
 const PANES = [['modele', 'Modèle'], ['matieres', 'Matières'], ['pieds', 'Pieds'], ['poignees', 'Poignées'], ['liste', 'Liste de courses'], ['notice', 'Notice']];
 function renderCfgNav() {
@@ -1514,6 +1543,13 @@ function buildModule(G, L, mi, M, feet) {
     const [ci, ri] = c.key.split('-').map(Number);
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(c.w, c.h), new THREE.MeshBasicMaterial()); pl.visible = false;
     pl.position.set(c.x + c.w / 2, c.y + c.h / 2, D + 24); pl.userData.cell = { mi, ci, ri }; G.add(pl); E.cellPicks.push(pl);
+    if (S.showCells) { // edit mode: every case gets a gold frame, to show it can be touched
+      const gm = new THREE.MeshBasicMaterial({ color: 0xD9962F, toneMapped: false }), b = 10, z = D + 26, cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+      [[c.w - 16, b, 0, c.h / 2 - 8], [c.w - 16, b, 0, -c.h / 2 + 8], [b, c.h - 16, c.w / 2 - 8, 0], [b, c.h - 16, -c.w / 2 + 8, 0]].forEach(([w, h, dx, dy]) => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), gm); m.position.set(cx + dx, cy + dy, z); G.add(m); });
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(c.w - 16, c.h - 16), new THREE.MeshBasicMaterial({ color: 0xE9B26B, transparent: true, opacity: .16, depthWrite: false, toneMapped: false }));
+      fill.position.set(cx, cy, z - 1); G.add(fill);
+    }
     const sc = S.selCell;
     if (sc && sc.mi === mi && sc.ci === ci && sc.ri === ri) {
       const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.w + 6, c.h + 6, D + 30)), new THREE.LineBasicMaterial({ color: 0xE9B26B }));
