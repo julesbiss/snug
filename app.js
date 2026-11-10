@@ -244,7 +244,22 @@ function drawZonesOn(g, W, H, zones, sel, full, k) {
   zones.forEach((z, i) => {
     const x = z.x * W, y = z.y * H, w = z.w * W, h = z.h * H, on = !full && i === sel;
     g.save();
+    // volume: the frame is the front of the furniture; its depth C is drawn as a box receding toward the centre of the photo
+    const ratio = clamp((pos(z.C) || 450) / (pos(z.A) || 2000), .12, .6), dep = clamp(w * ratio * 1.1, 26 * k, Math.max(26 * k, h * 1.1));
+    const cxn = z.x + z.w / 2, lean = (.5 - cxn) * 2.4, dx = dep * (lean >= 0 ? 1 : -1) * clamp(Math.abs(lean), .45, .8), dy = (z.y + z.h / 2) < .33 ? dep * .4 : -dep * .55;
+    const P = (px, py) => [px + dx, py + dy];
+    const top = dy < 0 ? [[x, y], [x + w, y], P(x + w, y), P(x, y)] : [[x, y + h], [x + w, y + h], P(x + w, y + h), P(x, y + h)];
+    const sx = dx >= 0 ? x + w : x, sideF = [[sx, y], [sx, y + h], P(sx, y + h), P(sx, y)];
+    const poly = (pts, fill, stroke) => { g.beginPath(); pts.forEach(([a, b], j) => (j ? g.lineTo(a, b) : g.moveTo(a, b))); g.closePath(); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) g.stroke(); };
+    g.strokeStyle = on ? 'rgba(233,178,107,.9)' : 'rgba(233,178,107,.55)'; g.lineWidth = 1.2 * k;
+    poly(top, on ? 'rgba(233,178,107,.22)' : 'rgba(233,178,107,.1)', true);
+    if (Math.abs(dx) > 2 * k) poly(sideF, on ? 'rgba(233,178,107,.14)' : 'rgba(233,178,107,.07)', true);
+    // hidden back edges, dashed
+    g.setLineDash([4 * k, 4 * k]); g.strokeStyle = 'rgba(233,178,107,.45)';
+    const hx = dx >= 0 ? x : x + w, hy = dy < 0 ? y + h : y;
+    g.beginPath(); g.moveTo(...P(hx, hy)); g.lineTo(...P(hx, dy < 0 ? y : y + h)); g.moveTo(...P(hx, hy)); g.lineTo(...P(dx >= 0 ? x + w : x, hy)); g.moveTo(...P(hx, hy)); g.lineTo(hx, hy); g.stroke(); g.setLineDash([]);
     g.fillStyle = on ? 'rgba(233,178,107,.10)' : 'rgba(233,178,107,.05)'; g.fillRect(x, y, w, h);
+    z._vol = { dx, dy };
     g.strokeStyle = on ? GOLD : 'rgba(233,178,107,.7)'; g.lineWidth = (on ? 1.6 : 1.3) * k;
     if (!on) g.setLineDash([6 * k, 5 * k]); g.strokeRect(x, y, w, h); g.setLineDash([]);
     // number
@@ -265,10 +280,13 @@ function drawZonesOn(g, W, H, zones, sel, full, k) {
       g.beginPath(); g.moveTo(bx, y); g.lineTo(bx, y + h); g.moveTo(bx - tick, y); g.lineTo(bx + tick, y); g.moveTo(bx - tick, y + h); g.lineTo(bx + tick, y + h); g.stroke();
       g.font = `700 ${Math.round(12.5 * k)}px "Geist", system-ui, sans-serif`; const bp = { w: g.measureText(`B  ${fmtMM(z.B)}`).width + 16 * k };
       hits.push({ zone: i, key: 'B', r: pill(g, Math.min(bx, W - bp.w / 2 - 4 * k), y + h / 2, `B  ${fmtMM(z.B)}`, k, !pos(z.B)) });
-      hits.push({ zone: i, key: 'C', r: pill(g, nx + 22 * k + 34 * k, ny, `C  ${fmtMM(z.C)}`, k, !pos(z.C)) });
+      // C along the receding top edge, on the side opposite the visible side face
+      const ex0 = dx >= 0 ? x : x + w, ey0 = dy < 0 ? y : y + h, [ex1, ey1] = P(ex0, ey0);
+      g.strokeStyle = GOLD; g.lineWidth = 1.3 * k; g.beginPath(); g.moveTo(ex0, ey0); g.lineTo(ex1, ey1); g.stroke();
+      hits.push({ zone: i, key: 'C', r: pill(g, clamp((ex0 + ex1) / 2 + (dx >= 0 ? -1 : 1) * 30 * k, 44 * k, W - 44 * k), clamp((ey0 + ey1) / 2, 16 * k, H - 16 * k), `C  ${fmtMM(z.C)}`, k, !pos(z.C)) });
       // delete
-      const dy = y - 20 * k > 14 * k ? y - 20 * k : y + h - 46 * k;
-      hits.push({ zone: i, key: 'del', r: pill(g, x + w / 2, Math.max(14 * k, dy), '✕  Supprimer', k, false) });
+      const topY = Math.min(y, y + dy), dyDel = topY - 20 * k > 14 * k ? topY - 20 * k : y + h - 46 * k;
+      hits.push({ zone: i, key: 'del', r: pill(g, x + w / 2 + dx / 2, Math.max(14 * k, dyDel), '✕  Supprimer', k, false) });
     }
     g.restore();
   });
@@ -940,26 +958,26 @@ function noticeFor(p, cu) {
           text: hidden ? [`Retournez le fond ${fond.code}, face visible contre le sol.`, `Vissez ${q} vérins W à 40 mm des bords, chacun avec 4 vis B. Ils porteront le meuble derrière la plinthe.`]
             : [`Retournez le fond ${fond.code}, face visible contre le sol.`, `Placez les ${q} pieds « ${feet.nom.toLowerCase()} » à 20 mm des bords : ${legXs(L).length} à l’avant, ${legXs(L).length} à l’arrière.`, 'Pré-percez à 3 mm, puis vissez chaque pied avec 4 vis B.'] });
       }
-      const sideMk = [t / 2, W - t / 2].flatMap((x) => [50, D / 2, D - 56].map((zz) => ({ p: [x, L.legs, zz], c: 'A' })));
+      const sideMk = [t / 2, W - t / 2].flatMap((x) => [50, D / 2, D - 56].map((zz) => ({ p: [x, L.legs, zz], c: 'A', d: [0, 1, 0] })));
       H('A', 6);
-      st({ title: 'Fixer les côtés sur le fond', add: [cg, cd], explode: [0, 220, 0], markers: sideMk, hw: [['A', 6]], tools: ['Foret bois 3 mm', 'Serre-joints'], extra: legExtra(false),
+      st({ title: 'Fixer les côtés sur le fond', add: [cg, cd], explode: [0, 220, 0], view: 'below', markers: sideMk, hw: [['A', 6]], tools: ['Foret bois 3 mm', 'Serre-joints'], extra: legExtra(false),
         text: [`Remettez le fond ${fond.code} à l’endroit.`, `Pré-percez le fond à 3 mm, à 9 mm du bord gauche et du bord droit : 3 trous de chaque côté, à 50 mm de l’avant, au milieu et à 50 mm de l’arrière.`,
           `Posez le côté gauche ${cg.code} et le côté droit ${cd.code} sur le fond, chants arrière alignés. Maintenez-les avec un serre-joint.`, 'Vissez par-dessous avec 3 vis A par côté, puis contrôlez l’équerre.'] });
       if (divs.length) {
         H('A', divs.length * 3);
         st({ title: 'Fixer les séparations', add: divs, explode: [0, 220, 0], hw: [['A', divs.length * 3]], tools: ['Foret bois 3 mm'], extra: legExtra(false),
-          markers: divs.flatMap((d) => [50, D / 2, D - 56].map((zz) => ({ p: [d.xpos + L.divT / 2, L.legs, zz], c: 'A' }))),
+          view: 'below', markers: divs.flatMap((d) => [50, D / 2, D - 56].map((zz) => ({ p: [d.xpos + L.divT / 2, L.legs, zz], c: 'A', d: [0, 1, 0] }))),
           text: [`Tracez l’axe de chaque séparation sur le fond : ${divs.map((d) => `${d.code} à ${R0(d.xpos + L.divT / 2)} mm du bord gauche`).join(', ')}.`, 'Pré-percez 3 trous par séparation sur l’axe, à 50 mm de l’avant, au milieu et à 50 mm de l’arrière.', 'Posez chaque séparation et vissez par-dessous avec 3 vis A.'] });
       }
       if (shel.length) {
         H('A', shel.length * 4);
         st({ title: 'Poser les étagères', add: shel, explode: [0, 0, 260], hw: [['A', shel.length * 4]], tools: ['Foret bois 3 mm', 'Niveau à bulle'], extra: legExtra(false),
-          markers: shel.flatMap((o) => [o.s.x - t / 2, o.s.x + o.s.w + t / 2].flatMap((x) => [50, D - 76].map((zz) => ({ p: [x, o.s.y + t / 2, zz], c: 'A' })))),
+          markers: shel.flatMap((o) => [[o.s.x - t, 1], [o.s.x + o.s.w + t, -1]].flatMap(([x, sx]) => [50, D - 76].map((zz) => ({ p: [x, o.s.y + t / 2, zz], c: 'A', d: [sx, 0, 0] })))),
           text: [`Tracez la hauteur de chaque étagère sur les montants : ${shel.map((o) => `${o.code} à ${R0(o.s.y - L.y0)} mm au-dessus du fond`).join(', ')}.`, 'Pré-percez 2 trous de chaque côté, à 50 mm de l’avant et de l’arrière, au milieu de l’épaisseur de l’étagère.', 'Glissez chaque étagère et vissez avec 2 vis A de chaque côté.'] });
       }
       const nC = Math.ceil(2 * (W + L.y1 - L.legs) / 150) + divs.length * 4; H('C', nC);
       st({ title: 'Poser le dos', add: [dos], explode: [0, 0, -240], view: 'back', hw: [['C', nC]], tools: ['Marteau'], extra: legExtra(false),
-        markers: [[30, L.legs + 30], [W / 2, L.legs + 30], [W - 30, L.legs + 30], [30, L.y1 - 30], [W / 2, L.y1 - 30], [W - 30, L.y1 - 30]].map(([x, y]) => ({ p: [x, y, 0], c: 'C' })),
+        markers: [[30, L.legs + 30], [W / 2, L.legs + 30], [W - 30, L.legs + 30], [30, L.y1 - 30], [W / 2, L.y1 - 30], [W - 30, L.y1 - 30]].map(([x, y]) => ({ p: [x, y, 0], c: 'C', d: [0, 0, 1] })),
         text: ['Mesurez les deux diagonales du meuble : elles doivent être égales, sinon poussez un angle jusqu’à ce qu’elles le soient.', `Posez le dos ${dos.code} à l’arrière, bord à bord.`, `Clouez-le avec ${nC} pointes C, une tous les 15 cm sur le pourtour et sur chaque séparation.`] });
     } else {
       st({ title: 'Monter les caissons', add: cais, explode: [0, 0, 0], tools: ['Visseuse', 'Marteau'],
@@ -987,14 +1005,14 @@ function noticeFor(p, cu) {
     if (plinth) {
       H('B', 4);
       st({ title: feet.inset ? 'Poser le socle en retrait' : 'Poser la plinthe', add: [plinth], explode: [0, 0, 200], hw: [['B', 4]],
-        markers: [[feet.inset + 60, L.legs / 2], [W - feet.inset - 60, L.legs / 2]].map(([x, y]) => ({ p: [x, y, D - feet.inset], c: 'B' })),
+        markers: [[feet.inset + 60, L.legs / 2], [W - feet.inset - 60, L.legs / 2]].map(([x, y]) => ({ p: [x, y, D - feet.inset], c: 'B', follow: 1 })),
         text: ['Réglez les vérins pour que le meuble soit de niveau.', `Fixez ${plinth.nom.toLowerCase()} ${plinth.code} ${feet.inset ? `à ${feet.inset} mm en retrait de l’avant` : 'au ras de l’avant'} avec des petites équerres et des vis B.`] });
     }
     const doors = fronts.filter((x) => x.f && x.f.kind === 'porte');
     if (doors.length) {
       const nD = doors.reduce((s, d) => s + (d.f.h > 900 ? 3 : 2), 0); H('D', nD);
       st({ title: 'Poser les portes', add: doors, explode: [0, 0, 240], hw: [['D', nD]], tools: ['Perceuse', 'Mèche Forstner 35 mm', 'Tournevis cruciforme'], extra: legExtra(false),
-        markers: doors.flatMap((d) => { const f = d.f, x = f.side === 'L' ? f.x + 22 : f.x + f.w - 22; const ys = f.h > 900 ? [f.y + 100, f.y + f.h / 2, f.y + f.h - 100] : [f.y + 100, f.y + f.h - 100]; return ys.map((y) => ({ p: [x, y, D + 18], c: 'D' })); }),
+        markers: doors.flatMap((d) => { const f = d.f, x = f.side === 'L' ? f.x + 22 : f.x + f.w - 22; const ys = f.h > 900 ? [f.y + 100, f.y + f.h / 2, f.y + f.h - 100] : [f.y + 100, f.y + f.h - 100]; return ys.map((y) => ({ p: [x, y, D + 18], c: 'D', follow: 1 })); }),
         text: [`Sur chaque porte (${doors.map((d) => d.code).join(', ')}), percez ${doors[0].f.h > 900 ? '3' : '2'} logements Ø 35 mm à la mèche Forstner, profondeur 12 mm, centre à 22 mm du bord côté charnière, à 100 mm du haut et du bas.`,
           'Vissez les charnières D dans les logements, puis les embases sur le montant, alignées sur les charnières.', 'Clipsez les portes et réglez les vis des charnières pour un jeu régulier de 3 mm.'] });
     }
@@ -1002,7 +1020,7 @@ function noticeFor(p, cu) {
     if (flaps.length) {
       H('D', flaps.length * 2); H('F', flaps.length);
       st({ title: 'Poser les abattants', add: flaps, explode: [0, 0, 240], hw: [['D', flaps.length * 2], ['F', flaps.length]], tools: ['Perceuse', 'Mèche Forstner 35 mm'],
-        markers: flaps.flatMap((d) => [[d.f.x + 100, d.f.y + 22], [d.f.x + d.f.w - 100, d.f.y + 22]].map(([x, y]) => ({ p: [x, y, D + 18], c: 'D' }))),
+        markers: flaps.flatMap((d) => [[d.f.x + 100, d.f.y + 22], [d.f.x + d.f.w - 100, d.f.y + 22]].map(([x, y]) => ({ p: [x, y, D + 18], c: 'D', follow: 1 }))),
         text: ['Percez 2 logements Ø 35 mm sur le chant bas de chaque abattant, à 100 mm des bords.', 'Posez les charnières D, puis un compas F de chaque côté pour retenir l’abattant ouvert.'] });
     }
     const drawers = fronts.filter((x) => x.f && x.f.kind === 'tiroir');
@@ -1820,19 +1838,49 @@ function renderStep() {
     const c = addBox(p.box, isNew, off); if (isNew) centers.push({ code: p.code, c, final: new THREE.Vector3(p.box[0] + p.box[3] / 2, p.box[1] + p.box[4] / 2, p.box[2] + p.box[5] / 2) });
   });
   st.extra.forEach((b) => addBox(b.box, b.isNew, [0, 0, 0]));
+  // hardware: a dark dot where to drill or fix; screws drawn on the axis of their hole, with a dashed guide
+  const ex = st.explode || [0, 0, 0], labelAt = {}; let detail = null;
+  const dot = new THREE.MeshBasicMaterial({ color: 0x15171A }), metal = new THREE.MeshLambertMaterial({ color: 0x8A8E95 }), hole = new THREE.MeshBasicMaterial({ color: 0x15171A });
+  st.markers.forEach((mk) => {
+    const f = mk.follow ? ex : [0, 0, 0], P = new THREE.Vector3(mk.p[0] + f[0], mk.p[1] + f[1], mk.p[2] + f[2]);
+    if (!mk.d) { const s0 = new THREE.Mesh(new THREE.SphereGeometry(7, 14, 10), dot); s0.position.copy(P); s0.userData.own = true; sc.add(s0); if (!labelAt[mk.c]) labelAt[mk.c] = P.clone(); return; }
+    const d = new THREE.Vector3(...mk.d).normalize(), back = Math.max(0, -(ex[0] * d.x + ex[1] * d.y + ex[2] * d.z));
+    const gap = 45 + back, len = mk.c === 'C' ? 20 : 38, tip = P.clone().addScaledVector(d, -gap), headP = tip.clone().addScaledVector(d, -len);
+    const hm = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 4, 12), hole); hm.position.copy(P); hm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); sc.add(hm);
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 1.2, len, 10), metal); sh.position.copy(tip.clone().add(headP).multiplyScalar(.5)); sh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); sc.add(sh);
+    const hd = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 3, 14), metal); hd.position.copy(headP); hd.quaternion.copy(sh.quaternion); sc.add(hd);
+    const lg = new THREE.BufferGeometry().setFromPoints([tip, P]); const ln = new THREE.Line(lg, new THREE.LineDashedMaterial({ color: 0xE8590C, dashSize: 8, gapSize: 6 })); ln.computeLineDistances(); sc.add(ln);
+    [hm, sh, hd, ln].forEach((o) => { o.userData.own = true; });
+    if (!labelAt[mk.c]) labelAt[mk.c] = headP.clone();
+    if (!detail) detail = { mid: P.clone().add(headP).multiplyScalar(.5), span: gap + len, d: d.clone() };
+  });
   if (box3.isEmpty()) box3.set(new THREE.Vector3(0, 0, 0), new THREE.Vector3(mod.L.W, mod.L.H, mod.L.D));
   const size = box3.getSize(new THREE.Vector3()), ctr = box3.getCenter(new THREE.Vector3());
   const cam = new THREE.PerspectiveCamera(26, Wc / Hc, 10, 100000);
   const dir = st.view === 'back' ? new THREE.Vector3(-.55, .45, -1) : st.view === 'below' ? new THREE.Vector3(.6, -.75, .9) : new THREE.Vector3(.6, .5, 1);
   dir.normalize(); const fitW = Math.max(size.x, size.z) / (Wc / Hc), fitH = size.y * 1.15, dist = Math.max(fitW, fitH, 300) / (2 * Math.tan(13 * Math.PI / 180)) * 1.05 + size.z * .5;
   cam.position.copy(ctr).addScaledVector(dir, dist); cam.lookAt(ctr); cam.updateMatrixWorld();
-  r.render(sc, cam); g.drawImage(T.cv, 0, 0, Wc, Hc); disposeScene(sc);
+  r.render(sc, cam); g.drawImage(T.cv, 0, 0, Wc, Hc);
+  if (detail) { // zoomed inset on the first screw: it sits right on the axis of its hole
+    const iw = 250, ih = 170, ix = Wc - iw - 12, iy = Hc - ih - 12, cam2 = new THREE.PerspectiveCamera(30, iw / ih, 5, 100000);
+    const dd = Math.max(detail.span * 1.6, 220) / (2 * Math.tan(15 * Math.PI / 180));
+    // look across the screw axis, with the panels see-through, so the screw and its hole are always visible
+    const side = dir.clone().addScaledVector(detail.d, -dir.dot(detail.d)); if (side.lengthSq() < .01) side.set(1, .4, .6); side.normalize();
+    cam2.position.copy(detail.mid).addScaledVector(side, dd); cam2.lookAt(detail.mid); cam2.updateMatrixWorld();
+    sc.traverse((o) => { if (o.isMesh && o.material && o.material.isMeshLambertMaterial && o.material.color.getHex() !== 0x8A8E95) { o.material.transparent = true; o.material.opacity = .28; o.material.depthWrite = false; } });
+    thumbR(iw, ih); r.render(sc, cam2);
+    g.save(); g.fillStyle = '#FFFFFF'; g.strokeStyle = '#15171A'; g.lineWidth = 1.5; rr(g, ix, iy, iw, ih, 10); g.fill(); g.save(); g.clip(); g.drawImage(T.cv, ix, iy, iw, ih); g.restore(); rr(g, ix, iy, iw, ih, 10); g.stroke();
+    g.fillStyle = '#15171A'; g.font = '700 12px "Geist", system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText('Détail', ix + 10, iy + 8); g.restore();
+    const [mx, my] = (() => { const q = detail.mid.clone().project(cam); return [(q.x + 1) / 2 * Wc, (1 - q.y) / 2 * Hc]; })();
+    g.save(); g.strokeStyle = 'rgba(21,23,26,.5)'; g.setLineDash([4, 4]); g.lineWidth = 1.2; g.beginPath(); g.arc(mx, my, 16, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(mx + 12, my + 12); g.lineTo(ix, iy + 20); g.stroke(); g.restore();
+  }
+  disposeScene(sc);
   const proj = (v) => { const q = v.clone().project(cam); return [(q.x + 1) / 2 * Wc, (1 - q.y) / 2 * Hc]; };
   g.save(); g.strokeStyle = '#E8590C'; g.fillStyle = '#E8590C'; g.lineWidth = 2;
   if (st.explode) centers.forEach((o) => { const a = proj(o.c), b = proj(o.final); if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 20) { g.setLineDash([7, 6]); g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); g.setLineDash([]); head(g, a[0], a[1], b[0], b[1], 11); } });
   g.restore();
   const seen = {};
-  st.markers.forEach((mk) => { const [x, y] = proj(new THREE.Vector3(...mk.p)); g.fillStyle = '#15171A'; g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#FFFFFF'; g.lineWidth = 1.5; g.stroke(); if (!seen[mk.c]) seen[mk.c] = [x, y]; });
+  Object.entries(labelAt).forEach(([c, v]) => { seen[c] = proj(v); });
   Object.entries(seen).forEach(([c, [x, y]]) => { const lx = clamp(x + 26, 20, Wc - 20), ly = clamp(y - 26, 20, Hc - 20); g.strokeStyle = '#15171A'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x, y); g.lineTo(lx, ly); g.stroke(); badge(g, lx, ly, c, 13); });
   centers.forEach((o) => { const [x, y] = proj(o.c); g.font = '800 16px "Geist Mono", ui-monospace, monospace'; const w = g.measureText(o.code).width + 16; g.fillStyle = '#15171A'; rr(g, x - w / 2, y - 13, w, 26, 6); g.fill(); g.fillStyle = '#FFFFFF'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(o.code, x, y + 1); });
   if (st.hw.length) {
