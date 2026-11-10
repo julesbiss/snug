@@ -141,13 +141,13 @@ function periodicNoise(seed) {
 }
 /* Tileable wood: long fibres along u, growth rings warped by noise, slow colour drift; paint: fine roller texture */
 function woodPixel(fb, u, v, A, B, tint) {
-  const warp = fb(u * 2, v * 4, 2, 4, 3), streak = fb(u * 3, v * 40, 3, 40, 3), fib = fb(u * 8, v * 128, 8, 128, 2), low = fb(u, v * 2, 1, 2, 2);
-  const ring = Math.sin(2 * Math.PI * (v * 5 + warp * 1.7 + streak * .35)), band = Math.pow(.5 + .5 * ring, 3);
-  const t = clamp(band * .55 + (streak - .5) * .75 + (fib - .5) * .75 + .08, 0, 1), lum = (1 + (low - .5) * .16) * (tint || 1);
+  const warp = fb(u * 1, v * 3, 1, 3, 3), streak = fb(u * 2, v * 64, 2, 64, 2), fib = fb(u * 16, v * 256, 16, 256, 1), low = fb(u, v * 2, 1, 2, 2);
+  const ring = Math.sin(2 * Math.PI * (v * 11 + warp * .9 + streak * .18)), band = Math.pow(.5 + .5 * ring, 6);
+  const t = clamp(band * .32 + (streak - .5) * .55 + (fib - .5) * .35 + .22, 0, 1), lum = (1 + (low - .5) * .1) * (tint || 1);
   return [(A[0] + (B[0] - A[0]) * t) * lum, (A[1] + (B[1] - A[1]) * t) * lum, (A[2] + (B[2] - A[2]) * t) * lum];
 }
 function texCanvas(f, size) {
-  const N = size || 256, key = f.id + '|' + N; if (TEX[key]) return TEX[key];
+  const N = size || 512, key = f.id + '|' + N; if (TEX[key]) return TEX[key];
   const c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); const img = g.createImageData(N, N), d = img.data;
   const fb = periodicNoise(hashStr(f.id)), A = hexRGB(f.c), B = hexRGB(f.g || f.c);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
@@ -846,7 +846,7 @@ function cellRules(L, c) {
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
   };
 }
-function openCell(ref) { S.selCell = ref; S.cellMsg = ''; setEditMode(false, true); renderCell(); if (E.inited) build3D(); }
+function openCell(ref) { S.selCell = ref; S.cellMsg = ''; if (window.scrollY > 40) window.scrollTo({ top: 0, behavior: 'smooth' }); setEditMode(false, true); renderCell(); if (E.inited) build3D(); }
 // "Modifier" mode: frames every case and explains that a case can be touched. Shown once automatically.
 function setEditMode(on, quiet) {
   S.showCells = !!on; $('#editBtn').setAttribute('aria-pressed', String(S.showCells)); $('#editTip').hidden = !S.showCells;
@@ -862,11 +862,13 @@ function renderCell() {
   const btn = (id, label, extra = '') => `<button type="button" class="cbtn${extra}" data-op="${id}">${label}</button>`;
   el.innerHTML = `<div class="rowb"><div><b>Colonne ${S.selCell.ci + 1} · ${where}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${k.contenu ? ' · ' + String(k.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="ibtn" id="cellClose" aria-label="Fermer">✕</button></div>
     <div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${k.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
-    <button type="button" class="switchrow small${rules.tringle && !k.tringle ? ' no' : ''}" role="switch" aria-checked="${!!k.tringle}" data-op="tringle"><span><b>Penderie</b><small>Une tringle pour suspendre des vêtements</small></span><i aria-hidden="true"></i></button>
-    <div class="cops">${btn('split', 'Ajouter une étagère', rules.split ? ' no' : '')}${S.selCell.ri < n - 1 ? btn('mergeUp', 'Fusionner avec le dessus') : ''}${S.selCell.ri > 0 ? btn('mergeDown', 'Fusionner avec le dessous') : ''}${S.selCell.ri < n - 1 ? btn('up', 'Monter') : ''}${S.selCell.ri > 0 ? btn('down', 'Descendre') : ''}${S.selCell.ci > 0 ? btn('left', '← Colonne') : ''}${S.selCell.ci < X.m.colonnes.length - 1 ? btn('right', 'Colonne →') : ''}</div>
+    <div class="cmore"${S.cellMore ? '' : ' hidden'}><button type="button" class="switchrow small${rules.tringle && !k.tringle ? ' no' : ''}" role="switch" aria-checked="${!!k.tringle}" data-op="tringle"><span><b>Penderie</b><small>Une tringle pour suspendre des vêtements</small></span><i aria-hidden="true"></i></button>
+    <div class="cops">${btn('split', 'Ajouter une étagère', rules.split ? ' no' : '')}${S.selCell.ri < n - 1 ? btn('mergeUp', 'Fusionner avec le dessus') : ''}${S.selCell.ri > 0 ? btn('mergeDown', 'Fusionner avec le dessous') : ''}${S.selCell.ri < n - 1 ? btn('up', 'Monter') : ''}${S.selCell.ri > 0 ? btn('down', 'Descendre') : ''}${S.selCell.ci > 0 ? btn('left', '← Colonne') : ''}${S.selCell.ci < X.m.colonnes.length - 1 ? btn('right', 'Colonne →') : ''}</div></div>
+    <button type="button" class="cmorebtn" id="cellMore">${S.cellMore ? 'Moins d’options' : 'Étagère, penderie, déplacer…'}</button>
     <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>`;
   el.hidden = false;
   $('#cellClose').onclick = closeCell;
+  $('#cellMore').onclick = () => { S.cellMore = !S.cellMore; renderCell(); };
   el.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => cellOp(b.dataset.op); });
 }
 function cellOp(op) {
@@ -1499,16 +1501,16 @@ function init3D() {
     E.r.toneMapping = THREE.ACESFilmicToneMapping; E.r.toneMappingExposure = .92; E.r.physicallyCorrectLights = false;
     E.scene = new THREE.Scene(); E.cam = new THREE.PerspectiveCamera(35, 4 / 3, .05, 60);
     E.env = makeEnv(E.r); if (E.env) E.scene.environment = E.env;
-    E.scene.add(new THREE.HemisphereLight(0xfff4e8, 0x3a3026, .32)); E.scene.fog = new THREE.Fog(0x141312, 6, 13);
+    E.scene.add(new THREE.HemisphereLight(0xfffaf2, 0x9c948a, .42)); E.scene.fog = new THREE.Fog(0xD6D0C7, 7, 15);
     const spot = new THREE.SpotLight(0xffe7c7, .9, 0, .55, .75, 1); spot.position.set(.4, 3.6, 3.4); spot.target.position.set(0, .3, 0); E.scene.add(spot, spot.target);
     const dl = new THREE.DirectionalLight(0xfff3e6, 1.0); dl.position.set(-1.6, 3.4, 2.8); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048);
     Object.assign(dl.shadow.camera, { left: -3.5, right: 3.5, top: 3, bottom: -1, near: .5, far: 12 }); dl.shadow.bias = -0.0008; E.scene.add(dl);
     const tx = (c, rep) => { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.anisotropy = 8; return t; };
-    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(parquetCanvas(), [9, 9]), color: 0x76624F, roughness: .4, envMapIntensity: .45 });
-    E.wallMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [6, 2]), color: 0x34302C, roughness: .95, envMapIntensity: .25 });
+    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [10, 10]), color: 0xC9C2B8, roughness: .92, envMapIntensity: .3 });
+    E.wallMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [6, 2]), color: 0xDCD6CD, roughness: .95, envMapIntensity: .3 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), E.floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; E.scene.add(floor);
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), E.wallMat); wall.position.set(0, 2.5, 0); wall.receiveShadow = true; E.scene.add(wall);
-    const base = new THREE.Mesh(new THREE.BoxGeometry(14, .08, .014), new THREE.MeshStandardMaterial({ color: 0x2C2A27, roughness: .5 })); base.position.set(0, .04, .007); base.receiveShadow = true; E.scene.add(base);
+    // (no skirting board: a seamless studio set reads more like a product photo)
     E.root = new THREE.Group(); E.root.scale.setScalar(.001); E.scene.add(E.root);
     E.orbit = { theta: .32, phi: 1.2, r: 4, target: new THREE.Vector3(0, .3, .2) }; E.ray = new THREE.Raycaster();
     const ptrs = new Map(); let down = null, pinch = 0;
@@ -1666,7 +1668,7 @@ function build3D() {
   if (!E.inited) return; const p = currentProp(), cu = S.custom[S.active]; if (!p || !cu) return;
   while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
   E.picks = []; E.opens = []; E.cellPicks = []; REG = null;
-  E.scene.background = lin('#141312');
+  E.scene.background = lin('#D6D0C7');
   const M = matsFor(cu), feet = feetById(cu.pieds);
   let maxX = 0, maxY = 0, maxD = 0, tvMod = null;
   placeModules(p).forEach((o) => {
@@ -1692,7 +1694,7 @@ function build3D() {
 function frame() {
   if (!E.ext) return; const fov = E.cam.fov * Math.PI / 180;
   const ext = Math.max(E.ext.w / Math.max(E.cam.aspect, .6), E.ext.h * 1.25, .5);
-  E.orbit.r = clamp(ext / (2 * Math.tan(fov / 2)) * 1.3, .8, 12); E.orbit.theta = .32; E.orbit.phi = 1.2;
+  E.orbit.r = clamp(ext / (2 * Math.tan(fov / 2)) * 1.12, .8, 12); E.orbit.theta = .32; E.orbit.phi = 1.2;
 }
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
