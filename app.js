@@ -141,9 +141,11 @@ function periodicNoise(seed) {
 }
 /* Tileable wood: long fibres along u, growth rings warped by noise, slow colour drift; paint: fine roller texture */
 function woodPixel(fb, u, v, A, B, tint) {
-  const warp = fb(u * 1, v * 3, 1, 3, 3), streak = fb(u * 2, v * 64, 2, 64, 2), fib = fb(u * 16, v * 256, 16, 256, 1), low = fb(u, v * 2, 1, 2, 2);
-  const ring = Math.sin(2 * Math.PI * (v * 11 + warp * .9 + streak * .18)), band = Math.pow(.5 + .5 * ring, 6);
-  const t = clamp(band * .26 + (streak - .5) * .3 + (fib - .5) * .2 + (low - .5) * .25 + .24, 0, 1), lum = (1 + (low - .5) * .12) * (tint || 1);
+  // Real oak: a broad cathedral figure (rings slowly crossing the board, strongly warped along the length),
+  // low contrast, plus fine straight pores. The old version drew tight parallel stripes, which read as "3D".
+  const warp = fb(u * 1, v * 2, 1, 2, 3), low = fb(u, v, 1, 1, 2), fib = fb(u * 8, v * 128, 8, 128, 2), pores = fb(u * 4, v * 256, 4, 256, 1);
+  const ring = Math.sin(2 * Math.PI * (v * 6 + warp * 2.2 + (u - .5) * (u - .5) * 1.5)), band = Math.pow(.5 + .5 * ring, 2.5);
+  const t = clamp(band * .22 + (low - .5) * .35 + (fib - .5) * .18 + (pores - .5) * .08 + .3, 0, 1), lum = (1 + (low - .5) * .08 - (pores > .72 ? .05 : 0)) * (tint || 1);
   return [(A[0] + (B[0] - A[0]) * t) * lum, (A[1] + (B[1] - A[1]) * t) * lum, (A[2] + (B[2] - A[2]) * t) * lum];
 }
 function texCanvas(f, size) {
@@ -228,10 +230,10 @@ function aoCanvas() {
 function examplePhoto() {
   // No photo yet: a quiet, empty wall to draw on (no fake objects).
   const c = document.createElement('canvas'); c.width = 1200; c.height = 840; const g = c.getContext('2d');
-  const wall = g.createLinearGradient(0, 0, 0, 640); wall.addColorStop(0, '#2B2926'); wall.addColorStop(1, '#3A3733'); g.fillStyle = wall; g.fillRect(0, 0, 1200, 660);
-  const fl = g.createLinearGradient(0, 660, 0, 840); fl.addColorStop(0, '#24211E'); fl.addColorStop(1, '#171513'); g.fillStyle = fl; g.fillRect(0, 660, 1200, 180);
-  g.fillStyle = '#4A4641'; g.fillRect(0, 648, 1200, 14);
-  g.strokeStyle = 'rgba(255,255,255,.035)'; g.lineWidth = 2; for (let x = -200; x < 1400; x += 150) { g.beginPath(); g.moveTo(x, 662); g.lineTo(x - 90, 840); g.stroke(); }
+  const wall = g.createLinearGradient(0, 0, 0, 640); wall.addColorStop(0, '#E9E5DE'); wall.addColorStop(1, '#DDD8CF'); g.fillStyle = wall; g.fillRect(0, 0, 1200, 660);
+  const fl = g.createLinearGradient(0, 660, 0, 840); fl.addColorStop(0, '#C9B9A2'); fl.addColorStop(1, '#B7A58C'); g.fillStyle = fl; g.fillRect(0, 660, 1200, 180);
+  g.fillStyle = '#F4F1EC'; g.fillRect(0, 648, 1200, 14);
+  g.strokeStyle = 'rgba(0,0,0,.06)'; g.lineWidth = 2; for (let x = -200; x < 1400; x += 150) { g.beginPath(); g.moveTo(x, 662); g.lineTo(x - 90, 840); g.stroke(); }
   const img = new Image(); img.src = c.toDataURL('image/jpeg', .9); return img;
 }
 
@@ -1014,7 +1016,26 @@ function cellOp(op) {
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
   X.p.edited = true; E.state = {}; S.cellMsg = ''; try { localStorage.setItem('snug.edited', '1'); } catch {}
   refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
-  $('#pWarn').hidden = !X.p.attention;
+  renderWarn(X.p);
+}
+
+/* The warnings of a proposal. When the user asked for ready-made cabinets and none fits, the first card says which
+   measure blocks and offers to set the zone to the nearest values that would work, then designs again. */
+function renderWarn(p) {
+  const el = $('#pWarn'); el.innerHTML = ''; el.hidden = !p.attention;
+  if (!p.attention) return;
+  const fix = Array.isArray(p.caissonFix) ? p.caissonFix : [];
+  const rest = fix.length ? fix.reduce((t, f) => t.replace(f.text, ''), p.attention).replace(/\s+/g, ' ').trim() : p.attention;
+  fix.forEach((f) => {
+    const card = document.createElement('div'); card.className = 'fixcard';
+    const need = [f.C && ['C', 'profondeur', f.C], f.B && ['B', 'hauteur', f.B], f.A && ['A', 'largeur', f.A]].filter(Boolean);
+    card.innerHTML = `<b>Pas de caisson tout fait dans la zone ${f.zone}</b><p>Le plus proche de vos cotes : <b>${escH(f.nom)}</b>. Il faudrait ${need.map(([k, l, v]) => `${l} <b>${Math.round(v).toLocaleString('fr-FR')} mm</b> (${k})`).join(' et ')}. En attendant, cette partie est prévue en panneaux découpés.</p>
+      <div class="rowb"><button type="button" class="btn primary sm fixApply">Reprendre avec ces cotes</button><button type="button" class="btn ghost sm fixEdit">Revoir mes cotes</button></div>`;
+    card.querySelector('.fixApply').onclick = () => { const z = S.zones[f.zone - 1]; if (!z) return; const m = zMan(z); if (f.A) { z.A = f.A; m.A = true; } if (f.B) { z.B = f.B; m.B = true; } if (f.C) { z.C = f.C; m.C = true; } toast('Cotes ajustées pour un caisson tout fait'); generate(); };
+    card.querySelector('.fixEdit').onclick = () => { show(1); S.sel = f.zone - 1; renderZones(); drawCotes(); };
+    el.appendChild(card);
+  });
+  if (rest) { const t = document.createElement('div'); t.textContent = 'Attention : ' + rest; el.appendChild(t); }
 }
 
 /* ================= design: the rules engine computes the three proposals on the phone ================= */
@@ -1319,7 +1340,7 @@ function renderResult() {
   $('#pShops').textContent = `${[...new Set(linesFor(S.active).map((l) => l.enseigne).filter(Boolean))].join(' + ')} · ${Ls.some((L) => L.caissons) ? 'caissons du commerce' : 'panneaux sur mesure'} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`;
   const det = Ls.flatMap((L) => L.details).map((x) => x.type === 'passe_cable' ? `passe-câble Ø ${x.dia} mm (${x.face === 'plateau' ? 'plateau' : 'dos'})` : x.type === 'aeration' ? 'aération à l’arrière' : 'fixation anti-basculement');
   $('#pDetails').hidden = !det.length; $('#pDetails').textContent = det.length ? 'Prévu sur le meuble : ' + [...new Set(det)].join(', ') + '.' : '';
-  $('#pWarn').hidden = !p.attention; $('#pWarn').textContent = p.attention ? 'Attention : ' + p.attention : '';
+  renderWarn(p);
   refreshAll();
   document.querySelectorAll('#panes .pane').forEach((x) => { x.hidden = x.dataset.pane !== S.pane; });
   renderCfgNav();
@@ -1374,6 +1395,8 @@ function renderList() {
     tr.append(a, b, c); tb.appendChild(tr);
   });
   loadProducts(lines);
+  const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '')), got = want.filter((it) => productOf(it)).length;
+  $('#pPhotos').textContent = !want.length ? '' : got === want.length ? '' : prodBusy ? 'Recherche des photos et des fiches produits…' : S.prodFail ? 'Photos et fiches indisponibles pour le moment (le site du magasin n’a pas répondu). Les liens ouvrent la recherche sur son site.' : `${got} / ${want.length} fiches produits trouvées.`;
   $('#pTotal').textContent = eur(tot); $('#pPrice').textContent = '≈ ' + eur(tot); $('#pPrice2').textContent = '≈ ' + eur(tot);
 }
 /* Real products for the list (photo, name, price, direct page), found by api/products and kept in this browser. */
@@ -1383,15 +1406,15 @@ const productOf = (it) => { const v = PROD[pkey(it)]; return v && v.found ? v.fo
 const linkOf = (it) => { const p = productOf(it); return p && p.url ? p.url : shopUrl(it.enseigne, it.recherche); };
 let prodBusy = false;
 async function loadProducts(lines) {
-  const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '') && !PROD[pkey(it)]);
+  const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '') && !(PROD[pkey(it)] && (PROD[pkey(it)].found || Date.now() - PROD[pkey(it)].at < 6e5)));
   if (!want.length || prodBusy) return; prodBusy = true;
   try {
     const res = await fetch('api/products', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: want.map((it) => ({ k: pkey(it), shop: it.enseigne, q: String(it.recherche || it.article).replace(/^(IKEA|Leroy Merlin|Castorama)\s+/i, '') })) }) });
-    if (!res.ok) return; const d = await res.json();
+    if (!res.ok) { S.prodFail = true; return; } const d = await res.json(); S.prodFail = !(d.results || []).some((r) => r.found);
     (d.results || []).forEach((r) => { PROD[r.k] = { found: r.found, at: Date.now() }; });
     try { localStorage.setItem(PKEY, JSON.stringify(PROD)); } catch {}
     if (S.step === 4 && currentProp()) { renderList(); if (!$('#cartSheet').hidden) renderCart(); }
-  } catch {} finally { prodBusy = false; }
+  } catch { S.prodFail = true; } finally { prodBusy = false; if (S.step === 4 && currentProp()) renderList(); }
 }
 
 /* Express basket: SNUG walks through the articles shop by shop. One tap opens the product on the shop's site,
@@ -1665,7 +1688,7 @@ function mat(id) {
   if (id.startsWith('h:')) { const hf = hfinById(id.slice(2)); m = hf.wood ? new THREE.MeshStandardMaterial({ map: woodTex('chene'), roughness: .65 }) : new THREE.MeshStandardMaterial({ color: lin(hf.c), metalness: hf.metal, roughness: hf.rough }); }
   else if (id === 'leather') m = new THREE.MeshStandardMaterial({ color: lin('#7A4A2A'), roughness: .75 });
   else if (id === 'dark') m = new THREE.MeshStandardMaterial({ color: 0x141110, roughness: .9 });
-  else { const f = finById(id); m = f.wood ? new THREE.MeshStandardMaterial({ map: woodTex(f.id), roughness: .5, envMapIntensity: .8 }) : new THREE.MeshStandardMaterial({ color: lin(f.c), roughness: .42, envMapIntensity: .95, map: woodTex(f.id) }); if (!f.wood) m.color = new THREE.Color(0xffffff); }
+  else { const f = finById(id); m = f.wood ? new THREE.MeshStandardMaterial({ map: woodTex(f.id), roughness: .46, envMapIntensity: .8, vertexColors: true }) : new THREE.MeshStandardMaterial({ color: lin(f.c), roughness: .4, envMapIntensity: .95, map: woodTex(f.id), vertexColors: true }); if (!f.wood) m.color = new THREE.Color(0xffffff); }
   return (E.mats[id] = m);
 }
 const TILE = 640;
@@ -1676,6 +1699,9 @@ function uvBox(geo, w, h, d, seed) {
 }
 function bx(w, h, d, m, x, y, z, parent) {
   const geo = new THREE.BoxGeometry(Math.max(w, 1), Math.max(h, 1), Math.max(d, 1)); uvBox(geo, Math.max(w, 1), Math.max(h, 1), Math.max(d, 1), Math.abs(x * 13 + y * 7 + z * 3) % 97 / 97);
+  // each panel comes from a different part of the board: a slight, fixed shift of tone per panel keeps them from looking cloned
+  if (m.vertexColors) { const seed = Math.abs(Math.round(x * 7 + y * 3 + z * 11 + w)) % 1000, r = rng(seed), lum = .95 + r() * .1, warm = .99 + r() * .02, n = geo.attributes.position.count, col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { col[i * 3] = lum * warm; col[i * 3 + 1] = lum; col[i * 3 + 2] = lum / warm; } geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
   const me = new THREE.Mesh(geo, m);
   me.position.set(x + w / 2, y + h / 2, z + d / 2); me.castShadow = true; me.receiveShadow = true; parent.add(me); return me;
 }
@@ -1736,7 +1762,7 @@ function init3D() {
     const sky = new THREE.DirectionalLight(0xf7f4ef, 0); sky.castShadow = true; sky.shadow.mapSize.set(1024, 1024); sky.shadow.bias = -0.0012; sky.shadow.normalBias = .006;
     Object.assign(sky.shadow.camera, { left: -3.5, right: 3.5, top: 3.5, bottom: -3.5, near: .5, far: 14 }); E.scene.add(sky, sky.target); E.sky = sky; E.acc = accInit(E.r);
     const tx = (c, rep) => { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.anisotropy = 8; return t; };
-    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [10, 10]), color: 0xA8A198, roughness: .72, envMapIntensity: .18 });
+    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [10, 10]), color: 0xA8A198, roughness: .55, envMapIntensity: .22 });
     E.wallMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [6, 2]), color: 0xE2DDD6, roughness: .95, envMapIntensity: .35 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), E.floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; E.scene.add(floor);
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), E.wallMat); wall.position.set(0, 2.5, 0); wall.receiveShadow = true; E.scene.add(wall);

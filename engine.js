@@ -172,6 +172,35 @@ function legsFor(ctx, spec, tall, sys) {
 }
 function topFor(vi, tall, desk) { return desk ? [26, 30, 38][vi] : tall ? [18, 18, 26][vi] : [18, 26, 36][vi]; }
 
+/* No cabinet fits this zone: for each eligible system, the smallest change of the zone (depth, height, width)
+   that would let its modules in; keep the one asking the least, and say it in plain words. */
+function caissonNeeds(ctx, spec, vi) {
+  const opts = [];
+  SYSTEMS.forEach((s) => {
+    if (!s.projects.includes(ctx.project)) return;
+    if (ctx.shops.size && !ctx.shops.has(s.shop)) return;
+    if (spec.raised && !s.wall) return;
+    if (!spec.raised && s.wallOnly) return;
+    const needC = s.depth + 20;
+    const hs = [...new Set(s.sizes.map((z) => z[1]))].filter((h) => !(ctx.project === 'tv' && h > 800)).sort((a, b) => a - b);
+    if (!hs.length) return;
+    const hNeed = hs.map((h) => { const tall = h > 1100, legs = spec.desk ? 0 : legsFor(ctx, spec, tall, s), topT = topFor(vi, tall, !!spec.desk); return legs + h + topT; });
+    const needB = Math.min(...hNeed), needA = Math.min(...s.sizes.map((z) => z[0]));
+    const dC = Math.max(0, needC - spec.Cmax), dB = Math.max(0, needB - spec.Hmax), dA = Math.max(0, needA - spec.Wmax);
+    if (!dC && !dB && !dA) return; // it should have fitted: the blocking rule is elsewhere (desk, wall), say nothing
+    opts.push({ sys: s, needC, needB, needA, dC, dB, dA, cost: dC + dB + dA });
+  });
+  if (!opts.length) return null;
+  opts.sort((a, b) => a.cost - b.cost);
+  const o = opts[0], mm = (v) => Math.round(v).toLocaleString('fr-FR') + ' mm';
+  const parts = [];
+  if (o.dC) parts.push(`une profondeur d’au moins ${mm(o.needC)} (vous avez ${mm(spec.Cmax)})`);
+  if (o.dB) parts.push(`une hauteur d’au moins ${mm(o.needB)} (vous avez ${mm(spec.Hmax)})`);
+  if (o.dA) parts.push(`une largeur d’au moins ${mm(o.needA)} (vous avez ${mm(spec.Wmax)})`);
+  const alt = opts.slice(1, 3).map((x) => `${x.sys.nom} (${[x.dC && 'profondeur ' + mm(x.needC), x.dB && 'hauteur ' + mm(x.needB), x.dA && 'largeur ' + mm(x.needA)].filter(Boolean).join(', ')})`);
+  return { zone: spec.zone, sys: o.sys.id, nom: o.sys.nom, A: o.dA ? o.needA : null, B: o.dB ? o.needB : null, C: o.dC ? o.needC : null,
+    text: `Zone ${spec.zone} : aucun caisson tout fait ne rentre, cette partie est prévue en panneaux découpés. Le plus proche de vos cotes est ${o.sys.nom} : il faudrait ${parts.join(' et ')}.${alt.length ? ' Autres pistes : ' + alt.join(' ; ') + '.' : ''}` };
+}
 function pickSystem(ctx, spec, vi, nWant) {
   const cands = [];
   SYSTEMS.forEach((s) => {
@@ -268,7 +297,14 @@ function buildVariant(ctx, vi) {
     if (!r.unplaced.length || !r.canGrow) break;
     extra++;
   }
-  if (fellBack) notes.push('Aucun caisson du commerce ne rentre dans une des zones : cette partie est prévue en panneaux découpés.');
+  let caissonFix = null;
+  if (fellBack) {
+    // Which measure blocks the ready-made cabinets, and the nearest values that would let one in: the user
+    // asked for "100 % caissons" and must get a plain answer, not cut panels by surprise.
+    const fixes = specs.map((spec) => caissonNeeds(ctx, spec, vi)).filter(Boolean);
+    if (fixes.length) { caissonFix = fixes; fixes.forEach((f) => notes.push(f.text)); }
+    else { const shops = [...ctx.shops].filter((x) => x !== 'Autoriser le mélange'); notes.push(`Aucune gamme de caissons tout faits pour ce type de meuble chez ${shops.length ? shops.join(' ou ') : 'ces magasins'} : cette partie est prévue en panneaux découpés. Cochez un autre magasin à l’étape Profil pour y accéder.`); }
+  }
   if (unplaced.length) {
     // say WHY each object does not fit: too tall, too wide, or simply no room left
     const cols = mods.flatMap((m) => m.colonnes.filter((c) => !c.knee));
@@ -334,7 +370,7 @@ function buildVariant(ctx, vi) {
   return {
     nom: NOMS[vi], resume, duree, difficulte, enseignes: [], magasin: ctx.magasin,
     tv: ctx.project === 'tv' && num(ctx.items.tv) > 0, finitions: fin, systeme: allCais && vi === 0 && sysUsed.length === 1 ? { nom: sysUsed[0], shop: mods[0].colonnes.find((c) => c._sys)._sys.shop, front: mods[0].colonnes.find((c) => c._sys)._sys.front } : null,
-    modules: mods.map(clean), liste, attention: notes.join(' '),
+    modules: mods.map(clean), liste, attention: notes.join(' '), caissonFix,
   };
 }
 const joinFr = (a) => (a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' et ' + a[a.length - 1]);

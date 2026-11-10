@@ -9,9 +9,12 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/6
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
 async function ikeaTry(q) {
-  const r = await withTimeout(fetch(`https://sik.search.blue.cdtapps.com/fr/fr/search-result-page?c=sr&v=20210322&types=PRODUCT&size=6&q=${encodeURIComponent(q)}`, { headers: { 'user-agent': UA, accept: 'application/json' } }), 6000);
-  if (!r.ok) return null;
-  const d = await r.json();
+  // two spellings of IKEA's search endpoint: the newer one with explicit parameters, then the bare one
+  let d = null;
+  for (const u of [`https://sik.search.blue.cdtapps.com/fr/fr/search-result-page?c=sr&v=20210322&types=PRODUCT&size=6&q=${encodeURIComponent(q)}`, `https://sik.search.blue.cdtapps.com/fr/fr/search-result-page?q=${encodeURIComponent(q)}&size=6`]) {
+    try { const r = await withTimeout(fetch(u, { headers: { 'user-agent': UA, accept: 'application/json', 'accept-language': 'fr-FR,fr;q=0.9' } }), 6000); if (r.ok) { d = await r.json(); if (d) break; } } catch { d = null; }
+  }
+  if (!d) return null;
   const items = (d && d.searchResultPage && d.searchResultPage.products && d.searchResultPage.products.main && d.searchResultPage.products.main.items) || [];
   const p = (items.find((it) => it && it.product) || {}).product;
   if (!p) return null;
