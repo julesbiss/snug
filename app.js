@@ -1233,12 +1233,54 @@ function renderList() {
     const a = document.createElement('td'); a.className = 'n'; a.textContent = (it.qte ?? '') + '×';
     const b = document.createElement('td'); b.textContent = it.article;
     const s = document.createElement('span'); s.className = 'sub'; s.textContent = [it.enseigne, it.detail].filter(Boolean).join(' · '); b.appendChild(s);
-    const l = document.createElement('a'); l.href = shopUrl(it.enseigne, it.recherche); l.target = '_blank'; l.rel = 'noopener'; l.textContent = `Ouvrir chez ${it.enseigne || 'le vendeur'} ↗`; b.appendChild(l);
+    const pr = productOf(it);
+    if (pr && pr.image) { const im = document.createElement('img'); im.className = 'pthumb'; im.alt = ''; im.loading = 'lazy'; im.referrerPolicy = 'no-referrer'; im.src = pr.image; im.onerror = () => im.remove(); b.prepend(im); }
+    if (pr && pr.name) { const pn = document.createElement('span'); pn.className = 'sub pname'; pn.textContent = pr.name + (pr.price ? ` · ${eur(+pr.price)} pièce` : ''); b.appendChild(pn); }
+    const l = document.createElement('a'); l.href = linkOf(it); l.target = '_blank'; l.rel = 'noopener'; l.textContent = pr && pr.url ? `Voir le produit chez ${it.enseigne} ↗` : `Chercher chez ${it.enseigne || 'le vendeur'} ↗`; b.appendChild(l);
     const c = document.createElement('td'); c.className = 'n'; c.textContent = eur(it.prix);
     tr.append(a, b, c); tb.appendChild(tr);
   });
+  loadProducts(lines);
   $('#pTotal').textContent = eur(tot); $('#pPrice').textContent = '≈ ' + eur(tot); $('#pPrice2').textContent = '≈ ' + eur(tot);
 }
+/* Real products for the list (photo, name, price, direct page), found by api/products and kept in this browser. */
+const PKEY = 'snug.products.v1'; let PROD = {}; try { PROD = JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch { PROD = {}; }
+const pkey = (it) => `${(it.enseigne || '').toLowerCase()}|${String(it.recherche || it.article).toLowerCase()}`;
+const productOf = (it) => { const v = PROD[pkey(it)]; return v && v.found ? v.found : null; };
+const linkOf = (it) => { const p = productOf(it); return p && p.url ? p.url : shopUrl(it.enseigne, it.recherche); };
+let prodBusy = false;
+async function loadProducts(lines) {
+  const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '') && !PROD[pkey(it)]);
+  if (!want.length || prodBusy) return; prodBusy = true;
+  try {
+    const res = await fetch('api/products', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: want.map((it) => ({ k: pkey(it), shop: it.enseigne, q: String(it.recherche || it.article).replace(/^(IKEA|Leroy Merlin|Castorama)\s+/i, '') })) }) });
+    if (!res.ok) return; const d = await res.json();
+    (d.results || []).forEach((r) => { PROD[r.k] = { found: r.found, at: Date.now() }; });
+    try { localStorage.setItem(PKEY, JSON.stringify(PROD)); } catch {}
+    if (S.step === 4 && currentProp()) { renderList(); if (!$('#cartSheet').hidden) renderCart(); }
+  } catch {} finally { prodBusy = false; }
+}
+
+/* Guided basket: each product opens on the shop's site, you tap "Ajouter au panier" there, then tick it here. */
+function cartKey() { return (S.projId || 'courant') + ':' + S.active; }
+function renderCart() {
+  const lines = linesFor(S.active), done = (S.cartDone || (S.cartDone = {}))[cartKey()] || (S.cartDone[cartKey()] = {});
+  const shops = [...new Set(lines.map((l) => l.enseigne || 'Autre'))];
+  const n = lines.filter((l) => done[pkey(l)]).length;
+  const el = $('#cartSheet');
+  el.innerHTML = `<div class="in"><div class="rowb"><h1>Mon panier</h1><button class="btn ghost sm" id="cartClose">Fermer</button></div>
+    <p class="muted small">Pour chaque article : touchez <b>Ouvrir</b>, ajoutez-le au panier sur le site du magasin, revenez ici et cochez-le. À la fin, il ne reste qu’à valider chaque panier.</p>
+    <div class="cartprog"><span style="width:${lines.length ? Math.round(n / lines.length * 100) : 0}%"></span></div><p class="mono small">${n} / ${lines.length} articles ajoutés</p>
+    ${shops.map((sh) => `<h2 class="cshop">${sh}</h2>` + lines.filter((l) => (l.enseigne || 'Autre') === sh).map((l) => { const k = pkey(l), p = productOf(l);
+      return `<div class="citem${done[k] ? ' ok' : ''}">${p && p.image ? `<img src="${p.image}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${l.qte} × ${String(l.article).replace(/[<>&]/g, '')}</b><span>${eur(l.prix)}${p && p.ref ? ' · réf. ' + p.ref : ''}</span></div>
+        <a class="btn ghost sm" href="${linkOf(l)}" target="_blank" rel="noopener" data-k="${k}">Ouvrir</a><button type="button" class="ccheck" data-k="${k}" aria-pressed="${!!done[k]}" aria-label="Ajouté au panier">✓</button></div>`; }).join('')).join('')}
+    ${n === lines.length && lines.length ? '<p class="cartdone">Tout est dans vos paniers : il ne reste qu’à les valider sur chaque site.</p>' : ''}</div>`;
+  el.hidden = false;
+  $('#cartClose').onclick = () => { el.hidden = true; };
+  el.querySelectorAll('.ccheck').forEach((b) => { b.onclick = () => { const k = b.dataset.k; done[k] = !done[k]; renderCart(); }; });
+  loadProducts(lines);
+}
+$('#cartBtn').onclick = renderCart;
 $('#copyBtn').onclick = async () => {
   const p = currentProp(); if (!p) return;
   const txt = `${projectName()} · ${p.nom}\n` + linesFor(S.active).map((it) => `${it.qte}× ${it.article} (${it.enseigne}) ${eur(it.prix)}\n   ${shopUrl(it.enseigne, it.recherche)}`).join('\n');
