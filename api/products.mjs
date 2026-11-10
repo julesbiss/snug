@@ -41,7 +41,7 @@ async function genericShop(base, searchUrl, q, linkRe) {
 }
 const SHOPS = {
   ikea,
-  'leroy merlin': (q) => genericShop('https://www.leroymerlin.fr', (s) => `https://www.leroymerlin.fr/recherche=${encodeURIComponent(s)}`, q, /href="(\/produits\/[^"#?]+\.html)"/),
+  'leroy merlin': (q) => genericShop('https://www.leroymerlin.fr', (s) => `https://www.leroymerlin.fr/search?q=${encodeURIComponent(s)}`, q, /href="(\/produits\/[^"#?]+\.html)"/),
   castorama: (q) => genericShop('https://www.castorama.fr', (s) => `https://www.castorama.fr/search?term=${encodeURIComponent(s)}`, q, /href="(\/[^"#?]+\/\d{8,}_CAFR\.prd)"/),
 };
 
