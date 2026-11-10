@@ -239,28 +239,40 @@ function pill(g, x, y, txt, k, strong) {
   return { x: x - w / 2, y: y - h / 2, w, h };
 }
 function drawZonesOn(g, W, H, zones, sel, full, k) {
-  k = k || 1; const labels = [];
+  // Clean, architect-like frames: crop-style corners, dimension lines outside the frame, one delete button.
+  k = k || 1; const hits = []; const GOLD = '#E9B26B';
   zones.forEach((z, i) => {
     const x = z.x * W, y = z.y * H, w = z.w * W, h = z.h * H, on = !full && i === sel;
     g.save();
-    g.fillStyle = on ? 'rgba(233,178,107,.18)' : 'rgba(233,178,107,.08)'; g.fillRect(x, y, w, h);
-    if (on) { g.strokeStyle = '#E9B26B'; g.lineWidth = 2.4 * k; g.strokeRect(x, y, w, h); }
-    else { g.setLineDash([7 * k, 5 * k]); g.strokeStyle = 'rgba(233,178,107,.8)'; g.lineWidth = 1.5 * k; g.strokeRect(x, y, w, h); g.setLineDash([]); }
+    g.fillStyle = on ? 'rgba(233,178,107,.10)' : 'rgba(233,178,107,.05)'; g.fillRect(x, y, w, h);
+    g.strokeStyle = on ? GOLD : 'rgba(233,178,107,.7)'; g.lineWidth = (on ? 1.6 : 1.3) * k;
+    if (!on) g.setLineDash([6 * k, 5 * k]); g.strokeRect(x, y, w, h); g.setLineDash([]);
+    // number
+    const r = 10 * k, nx = x + 16 * k, ny = y + 16 * k;
+    g.fillStyle = on ? GOLD : 'rgba(233,178,107,.85)'; g.beginPath(); g.arc(nx, ny, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#17130C'; g.font = `700 ${Math.round(12 * k)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), nx, ny + .5 * k);
     if (on) {
-      g.strokeStyle = '#E9B26B'; g.fillStyle = '#E9B26B'; g.lineWidth = 2 * k; const hs = 6 * k, m = 22 * k;
-      if (w > 120 * k) { arrow(g, x + 16 * k, y + h - m, x + w - 16 * k, y + h - m, hs); labels.push({ zone: i, key: 'A', r: pill(g, x + w / 2, y + h - m, `A  ${fmtMM(z.A)}`, k, !pos(z.A)) }); }
-      if (h > 90 * k) { arrow(g, x + w - m, y + 16 * k, x + w - m, y + h - 16 * k, hs); labels.push({ zone: i, key: 'B', r: pill(g, x + w - m, y + h / 2, `B  ${fmtMM(z.B)}`, k, !pos(z.B)) }); }
-      labels.push({ zone: i, key: 'C', r: pill(g, x + Math.max(60 * k, Math.min(w * .3, 80 * k)), y + Math.min(h * .3, 30 * k), `C  ${fmtMM(z.C)}`, k, !pos(z.C)) });
-      [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([hx, hy]) => {
-        g.beginPath(); g.arc(hx, hy, 11 * k, 0, Math.PI * 2); g.fillStyle = '#E9B26B'; g.fill(); g.lineWidth = 3 * k; g.strokeStyle = '#0E0F11'; g.stroke();
-      });
+      // crop-style corners
+      const L = Math.min(18 * k, w / 3, h / 3); g.strokeStyle = GOLD; g.lineWidth = 4 * k; g.lineCap = 'round';
+      [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([cx, cy, sx, sy]) => { g.beginPath(); g.moveTo(cx + sx * L, cy); g.lineTo(cx, cy); g.lineTo(cx, cy + sy * L); g.stroke(); });
+      g.lineCap = 'butt';
+      // dimension lines, outside the frame when there is room
+      const off = 16 * k, tick = 5 * k; g.lineWidth = 1.3 * k; g.strokeStyle = GOLD;
+      const ay = y + h + off < H - 14 * k ? y + h + off : y + h - off;
+      g.beginPath(); g.moveTo(x, ay); g.lineTo(x + w, ay); g.moveTo(x, ay - tick); g.lineTo(x, ay + tick); g.moveTo(x + w, ay - tick); g.lineTo(x + w, ay + tick); g.stroke();
+      hits.push({ zone: i, key: 'A', r: pill(g, x + w / 2, ay, `A  ${fmtMM(z.A)}`, k, !pos(z.A)) });
+      const bx = x + w + off < W - 30 * k ? x + w + off : x + w - off;
+      g.beginPath(); g.moveTo(bx, y); g.lineTo(bx, y + h); g.moveTo(bx - tick, y); g.lineTo(bx + tick, y); g.moveTo(bx - tick, y + h); g.lineTo(bx + tick, y + h); g.stroke();
+      g.font = `700 ${Math.round(12.5 * k)}px "Geist", system-ui, sans-serif`; const bp = { w: g.measureText(`B  ${fmtMM(z.B)}`).width + 16 * k };
+      hits.push({ zone: i, key: 'B', r: pill(g, Math.min(bx, W - bp.w / 2 - 4 * k), y + h / 2, `B  ${fmtMM(z.B)}`, k, !pos(z.B)) });
+      hits.push({ zone: i, key: 'C', r: pill(g, nx + 22 * k + 34 * k, ny, `C  ${fmtMM(z.C)}`, k, !pos(z.C)) });
+      // delete
+      const dy = y - 20 * k > 14 * k ? y - 20 * k : y + h - 46 * k;
+      hits.push({ zone: i, key: 'del', r: pill(g, x + w / 2, Math.max(14 * k, dy), '✕  Supprimer', k, false) });
     }
-    const r = 11 * k, cx = x + (on ? 26 * k : r + 6 * k), cy = y + (on ? 26 * k : r + 6 * k);
-    g.fillStyle = '#E9B26B'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
-    g.fillStyle = '#17130C'; g.font = `700 ${Math.round(r * 1.1)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), cx, cy + r * .06);
     g.restore();
   });
-  return labels;
+  return hits;
 }
 function drawCotes() {
   const cv = $('#cv1'); const g = drawPhoto(cv); const k = cv.width / Math.max(200, cv.clientWidth || 360);
@@ -279,6 +291,7 @@ function newZone() {
   function hitTest(cx, cy) {
     const p = pt(cx, cy), k = p.sx, X = p.rx * k, Y = p.ry * k, W = cv.width, H = cv.height;
     for (const l of S.zoneLabels || []) if (X >= l.r.x - 4 * k && X <= l.r.x + l.r.w + 4 * k && Y >= l.r.y - 6 * k && Y <= l.r.y + l.r.h + 6 * k) return { type: 'label', l };
+    // (corners have a generous touch area even though they are drawn small)
     const z = S.zones[S.sel];
     if (z) for (const [c, hx, hy] of [['tl', z.x, z.y], ['tr', z.x + z.w, z.y], ['bl', z.x, z.y + z.h], ['br', z.x + z.w, z.y + z.h]]) if (Math.hypot(X - hx * W, Y - hy * H) < 26 * k) return { type: 'corner', c, i: S.sel };
     for (let i = S.zones.length - 1; i >= 0; i--) { const q = S.zones[i]; if (p.x >= q.x && p.x <= q.x + q.w && p.y >= q.y && p.y <= q.y + q.h) return { type: 'move', i }; }
@@ -291,7 +304,7 @@ function newZone() {
     if (h.type === 'label') { act = { h, x0: e.clientX, y0: e.clientY }; return; }
     if (h.i !== S.sel) { S.sel = h.i; renderZones(); }
     const z = S.zones[h.i]; act = { h, start: pt(e.clientX, e.clientY), z0: { x: z.x, y: z.y, w: z.w, h: z.h }, x0: e.clientX, y0: e.clientY };
-    cv.setPointerCapture(e.pointerId); $('.zonetip').hidden = true; drawCotes();
+    cv.setPointerCapture(e.pointerId); S.zonesTouched = true; $('.zonetip').hidden = true; drawCotes();
   });
   cv.addEventListener('pointermove', (e) => {
     if (!act || act.h.type === 'label') return; const p = pt(e.clientX, e.clientY), z = S.zones[act.h.i], o = act.z0;
@@ -307,6 +320,9 @@ function newZone() {
   });
   const end = (e) => {
     if (!act) return; const a = act; act = null;
+    if (a.h.type === 'label' && e.type === 'pointerup' && Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 10 && a.h.l.key === 'del') {
+      S.zones.splice(a.h.l.zone, 1); S.zonesTouched = true; S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); renderZones(); drawCotes(); toast('Zone supprimée'); return;
+    }
     if (a.h.type === 'label' && e.type === 'pointerup' && Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 10) {
       S.sel = a.h.l.zone; renderZones(); drawCotes();
       const inp = $(`#z${a.h.l.zone}${a.h.l.key}`); if (inp) { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => inp.focus(), 300); }
@@ -338,7 +354,8 @@ const DIMS = [['A', 'Largeur', 'La place disponible, d’un bord à l’autre'],
   ['C', 'Profondeur', 'Depuis le mur, sans gêner le passage'], ['D', 'Hauteur au-dessus du sol', '0 si le meuble est posé au sol']];
 function renderZones() {
   const box = $('#zoneList'); box.innerHTML = '';
-  $('#zoneHint').textContent = S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone pour la sélectionner.` : '';
+  $('#zoneHint').textContent = !S.zones.length ? 'Aucune zone : touchez « Ajouter une zone » pour placer un cadre sur la photo.' : S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone pour la sélectionner.` : '';
+  $('.zonetip').hidden = !S.zones.length || !!S.zonesTouched;
   S.zones.forEach((z, i) => {
     const card = document.createElement('div'); card.className = 'card zonecard' + (i === S.sel ? ' sel' : '');
     card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<div class="cotes"></div>`;
@@ -351,7 +368,7 @@ function renderZones() {
       inp.addEventListener('focus', () => { if (S.sel !== i) { S.sel = i; drawCotes(); document.querySelectorAll('.zonecard').forEach((c, j) => c.classList.toggle('sel', j === i)); } });
       ct.appendChild(row);
     });
-    card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); if (!S.zones.length) newZone(); S.sel = clamp(S.sel, 0, S.zones.length - 1); renderZones(); drawCotes(); };
+    card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); S.zonesTouched = true; S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); renderZones(); drawCotes(); };
     box.appendChild(card);
   });
 }
@@ -410,7 +427,7 @@ function show(step) {
   $('#nextBtn').textContent = step === 3 ? 'Voir mes 3 meubles' : (step === 4 ? 'Nouveau projet' : 'Continuer');
   $('#backBtn').textContent = 'Retour';
   if (step === 0) drawPhoto($('#cv0'));
-  if (step === 1) { if (!S.zones.length) newZone(); renderZones(); requestAnimationFrame(drawCotes); }
+  if (step === 1) { if (!S.zones.length && !S.zonesTouched) newZone(); renderZones(); requestAnimationFrame(drawCotes); }
   if (step === 2) renderItems();
   if (step === 4 && currentProp()) renderResult(); else stopLoop();
   if (step !== 4) { S.selCell = null; $('#cellSheet').hidden = true; }
