@@ -380,3 +380,19 @@ ol.instr li::marker{color:var(--accent);font-family:var(--f-num)}
 #cartReset{margin-top:14px}
 .cartdone{background:var(--good-soft);color:var(--good);border-radius:12px;padding:12px;font-weight:600;font-size:14px}
 #cartBtn{align-self:stretch}
+/* perspective zones */
+.zphoto{position:relative}
+.drawstart{all:unset;cursor:pointer;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 22px;border-radius:20px;background:var(--accent);color:var(--on-accent);box-shadow:0 12px 40px rgba(0,0,0,.45);text-align:center;white-space:nowrap;animation:drawpulse 2.2s ease-in-out infinite}
+.drawstart b{font-size:16px;font-weight:700}
+.drawstart span{font-size:12.5px;opacity:.8}
+.drawstart:focus-visible{outline:3px solid #FFFFFF;outline-offset:3px}
+@keyframes drawpulse{0%,100%{box-shadow:0 12px 40px rgba(0,0,0,.45),0 0 0 0 rgba(233,178,107,.55)}50%{box-shadow:0 12px 40px rgba(0,0,0,.45),0 0 0 14px rgba(233,178,107,0)}}
+@media (prefers-reduced-motion:reduce){.drawstart{animation:none}}
+.drawbanner{position:absolute;left:8px;right:8px;top:8px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(14,15,17,.88);border:1px solid var(--accent);font-size:13.5px;font-weight:600;line-height:1.3;pointer-events:none}
+.drawbanner span{flex:1}
+.drawbanner button{all:unset;cursor:pointer;pointer-events:auto;color:var(--accent);font-weight:700;padding:6px 4px}
+.onemeasure{margin:4px 0 0;padding:12px 14px;border-radius:12px;background:color-mix(in srgb,var(--accent) 12%,transparent);font-size:13.5px;line-height:1.45;color:var(--fg)}
+.onemeasure b{color:var(--accent)}
+.autotag{display:none;font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin-right:6px}
+.cote.auto .autotag{display:inline}
+.cote.auto input{color:var(--accent);border-style:dashed;border-color:var(--accent)}

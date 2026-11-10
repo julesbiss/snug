@@ -33,7 +33,13 @@ découpe les zones en colonnes, place chaque objet dans une case à sa taille, c
 - **Équilibrée** : le système de caissons le plus adapté au projet, plateau et façades plus soignés ;
 - **Optimale** : panneaux découpés aux cotes exactes (selon le mode de fabrication choisi), plus de rangements fermés.
 
-Les dimensions des caissons et tous les prix sont des **estimations** : les liens ouvrent la recherche du produit chez l'enseigne.
+Les dimensions des caissons et tous les prix sont des **estimations** : chaque lien ouvre la fiche du produit quand elle est trouvée (`api/products.mjs`), sinon la recherche déjà remplie sur le site de l'enseigne.
+
+## Tracé en perspective
+
+À l'étape « Cotes », l'utilisateur trace l'emplacement du meuble sur le mur, puis ajuste les 4 coins (une loupe aide à viser) et tire la poignée de profondeur.
+À partir de la forme de ce rectangle, l'appli retrouve la focale et la position de l'appareil photo : une seule mesure saisie donne les deux autres,
+et le meuble est ensuite rendu dans la photo avec la même perspective. Les cotes calculées restent des estimations à vérifier au mètre.
 
 ## Mise en ligne gratuite sur Vercel
 

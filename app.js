@@ -115,7 +115,7 @@ const STORE_KEY = 'atelier.projets.v1';
 
 const S = {
   step: 0, photo: null, photoData: null, example: true, project: 'tv', fab: 'mixte',
-  zones: [{ ...DEFZ }], sel: 0, redraw: null,
+  zones: [], sel: 0, redraw: null,
   level: 'bricoleur', tools: new Set(['Visseuse', 'Perceuse', 'Niveau']), shops: new Set(['IKEA', 'Leroy Merlin', 'Castorama', 'Autoriser le mélange']),
   result: [null, null, null], custom: [null, null, null], active: -1, genZones: null, itemsBy: {}, customBy: {}, ambiance: 'bois', drawMode: false, selCell: null,
   view: '3d', hcat: 'Toutes',
@@ -143,7 +143,7 @@ function periodicNoise(seed) {
 function woodPixel(fb, u, v, A, B, tint) {
   const warp = fb(u * 1, v * 3, 1, 3, 3), streak = fb(u * 2, v * 64, 2, 64, 2), fib = fb(u * 16, v * 256, 16, 256, 1), low = fb(u, v * 2, 1, 2, 2);
   const ring = Math.sin(2 * Math.PI * (v * 11 + warp * .9 + streak * .18)), band = Math.pow(.5 + .5 * ring, 6);
-  const t = clamp(band * .32 + (streak - .5) * .55 + (fib - .5) * .35 + .22, 0, 1), lum = (1 + (low - .5) * .1) * (tint || 1);
+  const t = clamp(band * .26 + (streak - .5) * .3 + (fib - .5) * .2 + (low - .5) * .25 + .24, 0, 1), lum = (1 + (low - .5) * .12) * (tint || 1);
   return [(A[0] + (B[0] - A[0]) * t) * lum, (A[1] + (B[1] - A[1]) * t) * lum, (A[2] + (B[2] - A[2]) * t) * lum];
 }
 function texCanvas(f, size) {
@@ -195,8 +195,33 @@ function envCanvas() {
   return c;
 }
 function makeEnv(renderer) {
-  try { const tex = new THREE.CanvasTexture(envCanvas()); tex.mapping = THREE.EquirectangularReflectionMapping; tex.encoding = THREE.sRGBEncoding;
-    const pm = new THREE.PMREMGenerator(renderer); const rt = pm.fromEquirectangular(tex); pm.dispose(); tex.dispose(); return rt.texture; } catch { return null; }
+  // A small photo studio rendered once into the reflection map: bright softboxes on a grey room. Unlike a flat
+  // gradient it carries real highlights (values above white), which is what makes varnish, paint and metal read as real.
+  try {
+    const sc = new THREE.Scene(), geo = new THREE.BoxGeometry(1, 1, 1);
+    const box = (w, h, d, x, y, z, c, k, side) => { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(c).convertSRGBToLinear().multiplyScalar(k), side: side || THREE.FrontSide })); m.scale.set(w, h, d); m.position.set(x, y, z); sc.add(m); return m; };
+    box(12, 6, 12, 0, 2.5, 0, '#BDB7AF', 1, THREE.BackSide);
+    box(12, .1, 12, 0, -.45, 0, '#8E8172', 1);
+    box(5.5, .05, 4.5, 0, 5.4, 1.2, '#FFFFFF', 11);
+    box(.05, 3.2, 4.5, -5.9, 2.6, 1.8, '#FFF0DC', 8);
+    box(.05, 2.2, 3, 5.9, 2.2, 1, '#DCE6FF', 2.2);
+    box(5, 3, .05, 0, 2.6, 5.9, '#FFFFFF', 2.6);
+    const pm = new THREE.PMREMGenerator(renderer), rt = pm.fromScene(sc, .035, .1, 40); pm.dispose(); geo.dispose(); sc.traverse((o) => { if (o.material) o.material.dispose(); });
+    return rt.texture;
+  } catch {
+    try { const tex = new THREE.CanvasTexture(envCanvas()); tex.mapping = THREE.EquirectangularReflectionMapping; tex.encoding = THREE.sRGBEncoding;
+      const pm = new THREE.PMREMGenerator(renderer); const rt = pm.fromEquirectangular(tex); pm.dispose(); tex.dispose(); return rt.texture; } catch { return null; }
+  }
+}
+/* Soft darkening where panels meet (inside a case, the light never reaches the corners): the cue the eye uses most to tell a real object from a drawing */
+function aoCanvas() {
+  if (TEX._ao) return TEX._ao;
+  const N = 128, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data;
+  for (let y = 0, i = 0; y < N; y++) for (let x = 0; x < N; x++, i += 4) {
+    const u = x / (N - 1), v = y / (N - 1), e = Math.min(u, 1 - u, v * 1.25, (1 - v) * .8), t = clamp(e / .3, 0, 1), sm = t * t * (3 - 2 * t);
+    d[i] = 26; d[i + 1] = 18; d[i + 2] = 12; d[i + 3] = 255 * (.05 + .4 * (1 - sm));
+  }
+  g.putImageData(img, 0, 0); TEX._ao = c; return c;
 }
 
 /* ================= example photo ================= */
@@ -238,106 +263,191 @@ function pill(g, x, y, txt, k, strong) {
   g.fillStyle = strong ? '#17130C' : '#F2F1EE'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, x, y + .5 * k);
   return { x: x - w / 2, y: y - h / 2, w, h };
 }
+/* ================= zones in perspective =================
+   A zone is the rectangle of wall the furniture stands against, as seen in the photo: 4 free corners
+   (z.q, normalised, top-left → top-right → bottom-right → bottom-left) plus a depth pulled toward the viewer.
+   From the shape of that rectangle SNUG recovers the camera (focal length, position), hence the real
+   proportions of the space: one typed measure gives the two others, and the furniture is later rendered
+   in the photo with the very same camera. z.x/z.y/z.w/z.h stay the bounding box of the 4 corners. */
+const R10 = (v) => Math.round(v / 10) * 10;
+function zq(z) { return z.q || (z.q = [[z.x, z.y], [z.x + z.w, z.y], [z.x + z.w, z.y + z.h], [z.x, z.y + z.h]]); }
+function zBox(z) { const q = zq(z), xs = q.map((p) => p[0]), ys = q.map((p) => p[1]); z.x = Math.min(...xs); z.y = Math.min(...ys); z.w = Math.max(...xs) - z.x; z.h = Math.max(...ys) - z.y; }
+function zMan(z) { return z.man || (z.man = { A: !!pos(z.A), B: !!pos(z.B), C: !!pos(z.C) }); }
+function zDepth(z) { const m = zMan(z); return m.C && pos(z.C) && pos(z.A) ? clamp(pos(z.C) / pos(z.A), .02, 3) : (z.dr || (z.dr = pos(z.C) && pos(z.A) ? pos(z.C) / pos(z.A) : .22)); }
+function zonePose(z, W, H, fForce) {
+  const [p0, p1, p2, p3] = zq(z).map(([x, y]) => [x * W - W / 2, y * H - H / 2]);
+  // homography of the unit square onto the 4 corners (Heckbert)
+  const dx1 = p1[0] - p2[0], dx2 = p3[0] - p2[0], sx = p0[0] - p1[0] + p2[0] - p3[0];
+  const dy1 = p1[1] - p2[1], dy2 = p3[1] - p2[1], sy = p0[1] - p1[1] + p2[1] - p3[1];
+  const den = dx1 * dy2 - dx2 * dy1 || 1e-9, g = (sx * dy2 - dx2 * sy) / den, h = (dx1 * sy - sx * dy1) / den;
+  const a = p1[0] - p0[0] + g * p1[0], b = p3[0] - p0[0] + h * p3[0], c = p0[0];
+  const d = p1[1] - p0[1] + g * p1[1], e = p3[1] - p0[1] + h * p3[1], f0 = p0[1];
+  const long = Math.max(W, H); let f = fForce || (long / 2) / Math.tan(34.5 * Math.PI / 180);
+  // both directions of the rectangle converge: they are perpendicular in reality, which gives the focal length
+  if (!fForce && Math.abs(g) * long > .05 && Math.abs(h) * long > .05) { const f2 = -(a * b + d * e) / (g * h); if (f2 > 0) f = clamp(Math.sqrt(f2), long * .55, long * 1.6); }
+  const n1 = [a / f, d / f, g], n2 = [b / f, e / f, h], l1 = Math.hypot(...n1) || 1e-9, l2 = Math.hypot(...n2) || 1e-9;
+  const r1 = n1.map((v) => v / l1); let r2 = n2.map((v) => v / l2); const dt = r1[0] * r2[0] + r1[1] * r2[1] + r1[2] * r2[2];
+  r2 = r2.map((v, i) => v - dt * r1[i]); const l = Math.hypot(...r2) || 1e-9; r2 = r2.map((v) => v / l);
+  const r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
+  // o: top-left corner, r1: along the width, r2: downward, r3: into the wall — camera axes (x right, y down, z forward), in units of the width A
+  return { f, ratio: clamp(l2 / l1, .02, 50), o: [c / f / l1, f0 / f / l1, 1 / l1], r1, r2, r3, W, H };
+}
+// point of the box: s along the width (0..1), t down the height (0..1), c toward the viewer (in widths) → canvas pixel
+function zonePt(P, s, t, c) {
+  const X = P.o[0] + s * P.r1[0] + t * P.ratio * P.r2[0] - c * P.r3[0], Y = P.o[1] + s * P.r1[1] + t * P.ratio * P.r2[1] - c * P.r3[1], Z = Math.max(1e-4, P.o[2] + s * P.r1[2] + t * P.ratio * P.r2[2] - c * P.r3[2]);
+  return [P.W / 2 + P.f * X / Z, P.H / 2 + P.f * Y / Z];
+}
+// one typed measure is enough: the others follow from the photo (and stay editable)
+function zoneAuto(z) {
+  const cv = $('#cv1'), P = zonePose(z, cv.width, cv.height), m = zMan(z), dr = zDepth(z);
+  const A = m.A && pos(z.A), B = m.B && pos(z.B), C = m.C && pos(z.C), base = A || (B ? B / P.ratio : 0) || (C ? C / dr : 0);
+  if (!base) { ['A', 'B', 'C'].forEach((k) => { if (!m[k]) z[k] = ''; }); return; }
+  if (!m.A) z.A = R10(base); if (!m.B) z.B = R10(base * P.ratio); if (!m.C) z.C = R10(base * dr);
+}
+function syncZoneInputs(i) {
+  const z = S.zones[i]; if (!z) return; const m = zMan(z);
+  ['A', 'B', 'C'].forEach((k) => { const inp = $(`#z${i}${k}`); if (!inp) return; if (document.activeElement !== inp) inp.value = z[k]; const auto = !m[k] && pos(z[k]); inp.closest('.cote').classList.toggle('auto', !!auto); });
+}
 function drawZonesOn(g, W, H, zones, sel, full, k) {
-  // Clean, architect-like frames: crop-style corners, dimension lines outside the frame, one delete button.
   k = k || 1; const hits = []; const GOLD = '#E9B26B';
+  const path = (pts) => { g.beginPath(); pts.forEach(([a, b], j) => (j ? g.lineTo(a, b) : g.moveTo(a, b))); g.closePath(); };
   zones.forEach((z, i) => {
-    const x = z.x * W, y = z.y * H, w = z.w * W, h = z.h * H, on = !full && i === sel;
-    g.save();
-    // volume: the frame is the front of the furniture; its depth C is drawn as a box receding toward the centre of the photo
-    const ratio = clamp((pos(z.C) || 450) / (pos(z.A) || 2000), .12, .6), dep = clamp(w * ratio * 1.1, 26 * k, Math.max(26 * k, h * 1.1));
-    const cxn = z.x + z.w / 2, lean = (.5 - cxn) * 2.4, dx = dep * (lean >= 0 ? 1 : -1) * clamp(Math.abs(lean), .45, .8), dy = (z.y + z.h / 2) < .33 ? dep * .4 : -dep * .55;
-    const P = (px, py) => [px + dx, py + dy];
-    const top = dy < 0 ? [[x, y], [x + w, y], P(x + w, y), P(x, y)] : [[x, y + h], [x + w, y + h], P(x + w, y + h), P(x, y + h)];
-    const sx = dx >= 0 ? x + w : x, sideF = [[sx, y], [sx, y + h], P(sx, y + h), P(sx, y)];
-    const poly = (pts, fill, stroke) => { g.beginPath(); pts.forEach(([a, b], j) => (j ? g.lineTo(a, b) : g.moveTo(a, b))); g.closePath(); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) g.stroke(); };
-    g.strokeStyle = on ? 'rgba(233,178,107,.9)' : 'rgba(233,178,107,.55)'; g.lineWidth = 1.2 * k;
-    poly(top, on ? 'rgba(233,178,107,.22)' : 'rgba(233,178,107,.1)', true);
-    if (Math.abs(dx) > 2 * k) poly(sideF, on ? 'rgba(233,178,107,.14)' : 'rgba(233,178,107,.07)', true);
-    // hidden back edges, dashed
-    g.setLineDash([4 * k, 4 * k]); g.strokeStyle = 'rgba(233,178,107,.45)';
-    const hx = dx >= 0 ? x : x + w, hy = dy < 0 ? y + h : y;
-    g.beginPath(); g.moveTo(...P(hx, hy)); g.lineTo(...P(hx, dy < 0 ? y : y + h)); g.moveTo(...P(hx, hy)); g.lineTo(...P(dx >= 0 ? x + w : x, hy)); g.moveTo(...P(hx, hy)); g.lineTo(hx, hy); g.stroke(); g.setLineDash([]);
-    g.fillStyle = on ? 'rgba(233,178,107,.10)' : 'rgba(233,178,107,.05)'; g.fillRect(x, y, w, h);
-    z._vol = { dx, dy };
-    g.strokeStyle = on ? GOLD : 'rgba(233,178,107,.7)'; g.lineWidth = (on ? 1.6 : 1.3) * k;
-    if (!on) g.setLineDash([6 * k, 5 * k]); g.strokeRect(x, y, w, h); g.setLineDash([]);
+    const on = !full && i === sel, P = zonePose(z, W, H), dr = zDepth(z), m = zMan(z);
+    const B4 = [[0, 0], [1, 0], [1, 1], [0, 1]], bk = B4.map(([s, t]) => zonePt(P, s, t, 0)), fr = B4.map(([s, t]) => zonePt(P, s, t, dr));
+    g.save(); g.lineJoin = 'round';
+    // the volume: floor print, sides, then the front face
+    const faces = [[bk[3], bk[2], fr[2], fr[3]], [bk[0], bk[1], fr[1], fr[0]], [bk[0], bk[3], fr[3], fr[0]], [bk[1], bk[2], fr[2], fr[1]]];
+    faces.forEach((f, j) => { path(f); g.fillStyle = `rgba(233,178,107,${(on ? .16 : .08) * (j ? .7 : 1.25)})`; g.fill(); });
+    g.setLineDash([5 * k, 5 * k]); g.strokeStyle = 'rgba(233,178,107,.6)'; g.lineWidth = 1.2 * k; path(bk); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = on ? 'rgba(233,178,107,.85)' : 'rgba(233,178,107,.5)'; g.lineWidth = 1.3 * k;
+    bk.forEach((p, j) => { g.beginPath(); g.moveTo(...p); g.lineTo(...fr[j]); g.stroke(); });
+    path(fr); g.fillStyle = on ? 'rgba(233,178,107,.10)' : 'rgba(233,178,107,.05)'; g.fill();
+    g.strokeStyle = on ? GOLD : 'rgba(233,178,107,.75)'; g.lineWidth = (on ? 2.2 : 1.4) * k; g.stroke();
     // number
-    const r = 10 * k, nx = x + 16 * k, ny = y + 16 * k;
+    const r = 10 * k, nx = (fr[0][0] * 3 + fr[2][0]) / 4, ny = (fr[0][1] * 3 + fr[2][1]) / 4;
     g.fillStyle = on ? GOLD : 'rgba(233,178,107,.85)'; g.beginPath(); g.arc(nx, ny, r, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#17130C'; g.font = `700 ${Math.round(12 * k)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), nx, ny + .5 * k);
     if (on) {
-      // crop-style corners
-      const L = Math.min(18 * k, w / 3, h / 3); g.strokeStyle = GOLD; g.lineWidth = 4 * k; g.lineCap = 'round';
-      [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([cx, cy, sx, sy]) => { g.beginPath(); g.moveTo(cx + sx * L, cy); g.lineTo(cx, cy); g.lineTo(cx, cy + sy * L); g.stroke(); });
-      g.lineCap = 'butt';
-      // dimension lines, outside the frame when there is room
-      const off = 16 * k, tick = 5 * k; g.lineWidth = 1.3 * k; g.strokeStyle = GOLD;
-      const ay = y + h + off < H - 14 * k ? y + h + off : y + h - off;
-      g.beginPath(); g.moveTo(x, ay); g.lineTo(x + w, ay); g.moveTo(x, ay - tick); g.lineTo(x, ay + tick); g.moveTo(x + w, ay - tick); g.lineTo(x + w, ay + tick); g.stroke();
-      hits.push({ zone: i, key: 'A', r: pill(g, x + w / 2, ay, `A  ${fmtMM(z.A)}`, k, !pos(z.A)) });
-      const bx = x + w + off < W - 30 * k ? x + w + off : x + w - off;
-      g.beginPath(); g.moveTo(bx, y); g.lineTo(bx, y + h); g.moveTo(bx - tick, y); g.lineTo(bx + tick, y); g.moveTo(bx - tick, y + h); g.lineTo(bx + tick, y + h); g.stroke();
-      g.font = `700 ${Math.round(12.5 * k)}px "Geist", system-ui, sans-serif`; const bp = { w: g.measureText(`B  ${fmtMM(z.B)}`).width + 16 * k };
-      hits.push({ zone: i, key: 'B', r: pill(g, Math.min(bx, W - bp.w / 2 - 4 * k), y + h / 2, `B  ${fmtMM(z.B)}`, k, !pos(z.B)) });
-      // C along the receding top edge, on the side opposite the visible side face
-      const ex0 = dx >= 0 ? x : x + w, ey0 = dy < 0 ? y : y + h, [ex1, ey1] = P(ex0, ey0);
-      g.strokeStyle = GOLD; g.lineWidth = 1.3 * k; g.beginPath(); g.moveTo(ex0, ey0); g.lineTo(ex1, ey1); g.stroke();
-      hits.push({ zone: i, key: 'C', r: pill(g, clamp((ex0 + ex1) / 2 + (dx >= 0 ? -1 : 1) * 30 * k, 44 * k, W - 44 * k), clamp((ey0 + ey1) / 2, 16 * k, H - 16 * k), `C  ${fmtMM(z.C)}`, k, !pos(z.C)) });
-      // delete
-      const topY = Math.min(y, y + dy), dyDel = topY - 20 * k > 14 * k ? topY - 20 * k : y + h - 46 * k;
-      hits.push({ zone: i, key: 'del', r: pill(g, x + w / 2 + dx / 2, Math.max(14 * k, dyDel), '✕  Supprimer', k, false) });
+      // the 4 corners on the wall
+      bk.forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 9 * k, 0, Math.PI * 2); g.fillStyle = 'rgba(14,15,17,.75)'; g.fill(); g.strokeStyle = GOLD; g.lineWidth = 2.4 * k; g.stroke(); g.beginPath(); g.arc(x, y, 2.6 * k, 0, Math.PI * 2); g.fillStyle = GOLD; g.fill(); });
+      // depth handle: the front corner that sits best inside the photo
+      const inside = ([x, y]) => x > 24 * k && x < W - 24 * k && y > 24 * k && y < H - 24 * k;
+      const hi = [3, 2, 0, 1].find((j) => inside(fr[j])); const hj = hi === undefined ? 3 : hi, hp = [clamp(fr[hj][0], 16 * k, W - 16 * k), clamp(fr[hj][1], 16 * k, H - 16 * k)];
+      z._dh = { j: hj, x: hp[0], y: hp[1] };
+      g.beginPath(); g.arc(hp[0], hp[1], 11 * k, 0, Math.PI * 2); g.fillStyle = GOLD; g.fill(); g.strokeStyle = '#17130C'; g.lineWidth = 2 * k;
+      const ux = hp[0] - bk[hj][0], uy = hp[1] - bk[hj][1], ul = Math.hypot(ux, uy) || 1, ax = ux / ul * 5 * k, ay = uy / ul * 5 * k;
+      g.beginPath(); g.moveTo(hp[0] - ax, hp[1] - ay); g.lineTo(hp[0] + ax, hp[1] + ay); g.moveTo(hp[0] + ax - ay * .7 - ax * .6, hp[1] + ay + ax * .7 - ay * .6); g.lineTo(hp[0] + ax, hp[1] + ay); g.lineTo(hp[0] + ax + ay * .7 - ax * .6, hp[1] + ay - ax * .7 - ay * .6); g.stroke();
+      // measures: A under the front, B beside it, C along the depth
+      const lbl = (key) => `${key}  ${!m[key] && pos(z[key]) ? '≈ ' : ''}${fmtMM(z[key])}`, mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      const pa = mid(fr[3], fr[2]), pb = mid(fr[1], fr[2]), oj = hj === 3 ? 2 : hj === 2 ? 3 : hj === 0 ? 1 : 0, pc = mid(bk[oj], fr[oj]);
+      // labels step aside from the corners, the handle and each other
+      const busy = [...bk.map(([x, y]) => ({ x: x - 16 * k, y: y - 16 * k, w: 32 * k, h: 32 * k })), { x: hp[0] - 18 * k, y: hp[1] - 18 * k, w: 36 * k, h: 36 * k }];
+      const put = (key, x, y, txt, strong, dirY) => {
+        g.font = `700 ${Math.round(12.5 * k)}px "Geist", system-ui, sans-serif`; const w = g.measureText(txt).width + 16 * k, h = 24 * k;
+        x = clamp(x, w / 2 + 4 * k, W - w / 2 - 4 * k); y = clamp(y, h / 2 + 4 * k, H - h / 2 - 4 * k);
+        for (let n = 0; n < 8 && busy.some((r) => x - w / 2 < r.x + r.w && x + w / 2 > r.x && y - h / 2 < r.y + r.h && y + h / 2 > r.y); n++) y = clamp(y + dirY * 14 * k, h / 2 + 4 * k, H - h / 2 - 4 * k);
+        const r = pill(g, x, y, txt, k, strong); busy.push(r); hits.push({ zone: i, key, r });
+      };
+      put('A', pa[0], pa[1] + 22 * k, lbl('A'), !pos(z.A), 1);
+      put('B', pb[0] + (fr[1][0] >= fr[0][0] ? 1 : -1) * 34 * k, pb[1], lbl('B'), !pos(z.B), -1);
+      put('C', pc[0], pc[1], lbl('C'), !pos(z.C), -1);
+      const topY = Math.min(bk[0][1], bk[1][1], fr[0][1], fr[1][1]), cxm = (bk[0][0] + bk[1][0]) / 2;
+      put('del', cxm, topY - 24 * k > 16 * k ? topY - 24 * k : Math.max(bk[2][1], fr[2][1]) - 44 * k, '✕  Supprimer', false, -1);
     }
     g.restore();
   });
   return hits;
 }
 function drawCotes() {
-  const cv = $('#cv1'); const g = drawPhoto(cv); const k = cv.width / Math.max(200, cv.clientWidth || 360);
-  S.zoneLabels = drawZonesOn(g, cv.width, cv.height, S.zones, S.sel, false, k) || [];
+  const cv = $('#cv1'); const g = drawPhoto(cv); const W = cv.width, H = cv.height, k = W / Math.max(200, cv.clientWidth || 360);
+  S.zoneLabels = drawZonesOn(g, W, H, S.zones, S.sel, false, k) || [];
+  const d = S.drawRect;
+  if (d) { g.save(); g.fillStyle = 'rgba(233,178,107,.14)'; g.strokeStyle = '#E9B26B'; g.lineWidth = 2 * k; g.setLineDash([7 * k, 5 * k]); const x = Math.min(d.x0, d.x1) * W, y = Math.min(d.y0, d.y1) * H, w = Math.abs(d.x1 - d.x0) * W, h = Math.abs(d.y1 - d.y0) * H; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h); g.restore(); }
+  const lp = S.loupe;
+  if (lp && S.photo && S.photo.naturalWidth) { // magnifier above the finger, to land a corner precisely
+    const R = Math.min(64 * k, H * .24), Z = 2.4, px = lp.x * W, py = lp.y * H, cx = px < W / 2 ? W - R - 8 * k : R + 8 * k, cy = py < H / 2 ? H - R - 8 * k : R + 8 * k; // in the opposite corner of the photo, never under the finger
+    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+    g.fillStyle = '#0E0F11'; g.fillRect(cx - R, cy - R, R * 2, R * 2);
+    g.translate(cx, cy); g.scale(Z, Z); g.translate(-px, -py); g.drawImage(S.photo, 0, 0, W, H);
+    const z = S.zones[S.sel]; if (z) { g.strokeStyle = '#E9B26B'; g.lineWidth = 1.4 * k / Z; g.beginPath(); zq(z).forEach(([a, b], j) => (j ? g.lineTo(a * W, b * H) : g.moveTo(a * W, b * H))); g.closePath(); g.stroke(); }
+    g.restore(); g.save();
+    g.strokeStyle = '#E9B26B'; g.lineWidth = 3 * k; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 1.2 * k; g.beginPath(); g.moveTo(cx - 12 * k, cy); g.lineTo(cx - 3 * k, cy); g.moveTo(cx + 3 * k, cy); g.lineTo(cx + 12 * k, cy); g.moveTo(cx, cy - 12 * k); g.lineTo(cx, cy - 3 * k); g.moveTo(cx, cy + 3 * k); g.lineTo(cx, cy + 12 * k); g.stroke(); g.restore();
+  }
 }
 
 /* ================= zones ================= */
-// The zone is a frame you move with the finger and resize by its corners. Touching elsewhere scrolls the page.
-function newZone() {
-  const n = S.zones.length, z = n ? { x: clamp(.25 + n * .05, 0, .55), y: clamp(.3 + n * .05, 0, .6), w: .4, h: .3 } : { x: .12, y: .48, w: .76, h: .32 };
-  S.zones.push({ ...z, A: '', B: '', C: '', D: 0 }); S.sel = S.zones.length - 1;
+// "Dessiner" arms the photo: one diagonal stroke of the finger creates the zone. Then each corner moves freely
+// (with a magnifier), the round handle pulls the depth, and the whole box moves when dragged by its middle.
+function setDrawing(on) {
+  S.drawing = !!on; S.drawRect = null;
+  $('.zphoto').classList.toggle('drawing', S.drawing); $('#drawBanner').hidden = !S.drawing; $('#drawStart').hidden = S.drawing || S.zones.length > 0;
+  if (S.drawing) $('.zphoto').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 (function () {
   const cv = $('#cv1'); let act = null;
   const pt = (cx, cy) => { const r = cv.getBoundingClientRect(); return { x: clamp((cx - r.left) / r.width, 0, 1), y: clamp((cy - r.top) / r.height, 0, 1), sx: cv.width / r.width, rx: cx - r.left, ry: cy - r.top }; };
+  const inPoly = (x, y, q) => { let c = false; for (let i = 0, j = q.length - 1; i < q.length; j = i++) if ((q[i][1] > y) !== (q[j][1] > y) && x < (q[j][0] - q[i][0]) * (y - q[i][1]) / (q[j][1] - q[i][1]) + q[i][0]) c = !c; return c; };
   function hitTest(cx, cy) {
     const p = pt(cx, cy), k = p.sx, X = p.rx * k, Y = p.ry * k, W = cv.width, H = cv.height;
-    for (const l of S.zoneLabels || []) if (X >= l.r.x - 4 * k && X <= l.r.x + l.r.w + 4 * k && Y >= l.r.y - 6 * k && Y <= l.r.y + l.r.h + 6 * k) return { type: 'label', l };
-    // (corners have a generous touch area even though they are drawn small)
     const z = S.zones[S.sel];
-    if (z) for (const [c, hx, hy] of [['tl', z.x, z.y], ['tr', z.x + z.w, z.y], ['bl', z.x, z.y + z.h], ['br', z.x + z.w, z.y + z.h]]) if (Math.hypot(X - hx * W, Y - hy * H) < 26 * k) return { type: 'corner', c, i: S.sel };
-    for (let i = S.zones.length - 1; i >= 0; i--) { const q = S.zones[i]; if (p.x >= q.x && p.x <= q.x + q.w && p.y >= q.y && p.y <= q.y + q.h) return { type: 'move', i }; }
+    if (z) { // corners first: they must stay reachable even under a label
+      const q = zq(z); let best = -1, bd = 24 * k;
+      q.forEach(([a, b], j) => { const d = Math.hypot(X - a * W, Y - b * H); if (d < bd) { bd = d; best = j; } });
+      if (best >= 0) return { type: 'corner', c: best, i: S.sel };
+      if (z._dh && Math.hypot(X - z._dh.x, Y - z._dh.y) < 24 * k) return { type: 'depth', i: S.sel };
+    }
+    for (const l of S.zoneLabels || []) if (X >= l.r.x - 4 * k && X <= l.r.x + l.r.w + 4 * k && Y >= l.r.y - 6 * k && Y <= l.r.y + l.r.h + 6 * k) return { type: 'label', l };
+    for (let i = S.zones.length - 1; i >= 0; i--) {
+      const zz = S.zones[i], P = zonePose(zz, W, H), dr = zDepth(zz), B4 = [[0, 0], [1, 0], [1, 1], [0, 1]];
+      if (inPoly(X, Y, B4.map(([s, t]) => zonePt(P, s, t, dr))) || inPoly(X, Y, B4.map(([s, t]) => zonePt(P, s, t, 0)))) return { type: 'move', i };
+    }
     return null;
   }
-  // the page scrolls normally, except when the finger lands on a zone
-  cv.addEventListener('touchstart', (e) => { const t = e.touches[0]; if (t && hitTest(t.clientX, t.clientY)) e.preventDefault(); }, { passive: false });
+  // the page scrolls normally, except when drawing or when the finger lands on a zone
+  cv.addEventListener('touchstart', (e) => { const t = e.touches[0]; if (S.drawing || (t && hitTest(t.clientX, t.clientY))) e.preventDefault(); }, { passive: false });
   cv.addEventListener('pointerdown', (e) => {
+    if (S.drawing) { const p = pt(e.clientX, e.clientY); act = { h: { type: 'draw' } }; S.drawRect = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }; cv.setPointerCapture(e.pointerId); return; }
     const h = hitTest(e.clientX, e.clientY); if (!h) return;
     if (h.type === 'label') { act = { h, x0: e.clientX, y0: e.clientY }; return; }
     if (h.i !== S.sel) { S.sel = h.i; renderZones(); }
-    const z = S.zones[h.i]; act = { h, start: pt(e.clientX, e.clientY), z0: { x: z.x, y: z.y, w: z.w, h: z.h }, x0: e.clientX, y0: e.clientY };
-    cv.setPointerCapture(e.pointerId); S.zonesTouched = true; $('.zonetip').hidden = true; drawCotes();
-  });
-  cv.addEventListener('pointermove', (e) => {
-    if (!act || act.h.type === 'label') return; const p = pt(e.clientX, e.clientY), z = S.zones[act.h.i], o = act.z0;
-    const dx = p.x - act.start.x, dy = p.y - act.start.y, MIN = .06;
-    if (act.h.type === 'move') { z.x = clamp(o.x + dx, 0, 1 - o.w); z.y = clamp(o.y + dy, 0, 1 - o.h); }
-    else {
-      let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h; const c = act.h.c;
-      if (c[1] === 'l') x1 = clamp(o.x + dx, 0, x2 - MIN); else x2 = clamp(o.x + o.w + dx, x1 + MIN, 1);
-      if (c[0] === 't') y1 = clamp(o.y + dy, 0, y2 - MIN); else y2 = clamp(o.y + o.h + dy, y1 + MIN, 1);
-      Object.assign(z, { x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
-    }
+    const z = S.zones[h.i]; act = { h, start: pt(e.clientX, e.clientY), q0: zq(z).map((c) => [...c]), x0: e.clientX, y0: e.clientY };
+    cv.setPointerCapture(e.pointerId); S.zonesTouched = true; $('.zonetip').hidden = true;
+    if (h.type === 'corner') S.loupe = { x: z.q[h.c][0], y: z.q[h.c][1] };
     drawCotes();
   });
+  cv.addEventListener('pointermove', (e) => {
+    if (!act || act.h.type === 'label') return; const p = pt(e.clientX, e.clientY);
+    if (act.h.type === 'draw') { S.drawRect.x1 = p.x; S.drawRect.y1 = p.y; drawCotes(); return; }
+    const z = S.zones[act.h.i], dx = p.x - act.start.x, dy = p.y - act.start.y;
+    if (act.h.type === 'move') {
+      const xs = act.q0.map((c) => c[0]), ys = act.q0.map((c) => c[1]), mx = clamp(dx, -Math.min(...xs), 1 - Math.max(...xs)), my = clamp(dy, -Math.min(...ys), 1 - Math.max(...ys));
+      z.q = act.q0.map(([a, b]) => [a + mx, b + my]);
+    } else if (act.h.type === 'corner') {
+      // the corner follows the finger; it only stops where the outline would fold over itself
+      const c = act.h.c, q = act.q0.map((v) => [...v]); q[c] = [clamp(act.q0[c][0] + dx, 0, 1), clamp(act.q0[c][1] + dy, 0, 1)];
+      const W = cv.width, H = cv.height, cr = (o, a, b) => ((a[0] - o[0]) * W) * ((b[1] - o[1]) * H) - ((a[1] - o[1]) * H) * ((b[0] - o[0]) * W);
+      if ([0, 1, 2, 3].every((j) => cr(q[j], q[(j + 1) % 4], q[(j + 2) % 4]) > W * H * .0004)) z.q = q;
+      S.loupe = { x: z.q[c][0], y: z.q[c][1] };
+    } else if (act.h.type === 'depth') {
+      // slide along the real depth direction: the closest point of that line to the finger
+      const W = cv.width, H = cv.height, P = zonePose(z, W, H), [s, t] = [[0, 0], [1, 0], [1, 1], [0, 1]][z._dh.j], X = p.rx * p.sx, Y = p.ry * p.sx;
+      let best = z.dr || .22, bd = Infinity; for (let c = .03; c <= 1.6; c += .01) { const [a, b] = zonePt(P, s, t, c), d = Math.hypot(a - X, b - Y); if (d < bd) { bd = d; best = c; } }
+      z.dr = best; zMan(z).C = false;
+    }
+    zBox(z); zoneAuto(z); syncZoneInputs(act.h.i); drawCotes();
+  });
   const end = (e) => {
-    if (!act) return; const a = act; act = null;
+    if (!act) return; const a = act; act = null; S.loupe = null;
+    if (a.h.type === 'draw') {
+      const d = S.drawRect; S.drawRect = null;
+      if (e.type === 'pointerup' && d && Math.abs(d.x1 - d.x0) > .08 && Math.abs(d.y1 - d.y0) > .05) {
+        const x = Math.min(d.x0, d.x1), y = Math.min(d.y0, d.y1), w = Math.abs(d.x1 - d.x0), h = Math.abs(d.y1 - d.y0);
+        S.zones.push({ x, y, w, h, q: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], A: '', B: '', C: '', D: 0, man: {}, dr: .22 }); S.sel = S.zones.length - 1; S.zonesTouched = false;
+        setDrawing(false); renderZones(); drawCotes(); return;
+      }
+      drawCotes(); if (e.type === 'pointerup') toast('Glissez le doigt en diagonale, d’un coin à l’autre'); return;
+    }
     if (a.h.type === 'label' && e.type === 'pointerup' && Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 10 && a.h.l.key === 'del') {
       S.zones.splice(a.h.l.zone, 1); S.zonesTouched = true; S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); renderZones(); drawCotes(); toast('Zone supprimée'); return;
     }
@@ -349,7 +459,9 @@ function newZone() {
     drawCotes();
   };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
-  $('#drawBtn').onclick = () => { newZone(); renderZones(); drawCotes(); $('#cv1').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  $('#drawBtn').onclick = () => setDrawing(true);
+  $('#drawStart').onclick = () => setDrawing(true);
+  $('#drawCancel').onclick = () => setDrawing(false);
 })();
 const DIM_SVG = `<svg class="dimsvg" viewBox="0 0 300 186" role="img" aria-label="A largeur, B hauteur, C profondeur, D hauteur au-dessus du sol">
   <line x1="8" y1="176" x2="292" y2="176" stroke="#4A4E55" stroke-width="2"/>
@@ -372,22 +484,23 @@ const DIMS = [['A', 'Largeur', 'La place disponible, d’un bord à l’autre'],
   ['C', 'Profondeur', 'Depuis le mur, sans gêner le passage'], ['D', 'Hauteur au-dessus du sol', '0 si le meuble est posé au sol']];
 function renderZones() {
   const box = $('#zoneList'); box.innerHTML = '';
-  $('#zoneHint').textContent = !S.zones.length ? 'Aucune zone : touchez « Ajouter une zone » pour placer un cadre sur la photo.' : S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone pour la sélectionner.` : '';
+  $('#drawStart').hidden = S.drawing || S.zones.length > 0; $('#drawBtn').hidden = !S.zones.length;
+  $('#zoneHint').textContent = !S.zones.length ? '' : S.zones.length > 1 ? `${S.zones.length} zones : chacune devient un module. Touchez une zone pour la sélectionner.` : '';
   $('.zonetip').hidden = !S.zones.length || !!S.zonesTouched;
   S.zones.forEach((z, i) => {
     const card = document.createElement('div'); card.className = 'card zonecard' + (i === S.sel ? ' sel' : '');
-    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<div class="cotes"></div>`;
+    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<p class="onemeasure"><b>Une seule mesure suffit.</b> Entrez la largeur, la hauteur ou la profondeur : SNUG calcule les deux autres d’après la photo. Vous pouvez les corriger au mètre.</p><div class="cotes"></div>`;
     const ct = card.querySelector('.cotes');
     DIMS.forEach(([k, l, sub]) => {
       const id = `z${i}${k}`; const row = document.createElement('div'); row.className = 'cote';
-      row.innerHTML = `<span class="k">${k}</span><label for="${id}"><b>${l}</b><small>${sub}</small></label><span class="u"><input id="${id}" type="number" inputmode="numeric" min="0" placeholder="0"><span>mm</span></span>`;
+      row.innerHTML = `<span class="k">${k}</span><label for="${id}"><b>${l}</b><small>${sub}</small></label><span class="u"><em class="autotag">calculé</em><input id="${id}" type="number" inputmode="numeric" min="0" placeholder="0"><span>mm</span></span>`;
       const inp = row.querySelector('input'); inp.value = z[k]; if (z.est && +z.est[k] > 0) inp.placeholder = '≈ ' + Math.round(+z.est[k]);
-      inp.addEventListener('input', () => { z[k] = inp.value; drawCotes(); });
+      inp.addEventListener('input', () => { z[k] = inp.value; if (k !== 'D') { zMan(z)[k] = !!pos(inp.value); zoneAuto(z); syncZoneInputs(i); } drawCotes(); });
       inp.addEventListener('focus', () => { if (S.sel !== i) { S.sel = i; drawCotes(); document.querySelectorAll('.zonecard').forEach((c, j) => c.classList.toggle('sel', j === i)); } });
       ct.appendChild(row);
     });
     card.querySelector('[data-act=del]').onclick = () => { S.zones.splice(i, 1); S.zonesTouched = true; S.sel = clamp(S.sel, 0, Math.max(0, S.zones.length - 1)); renderZones(); drawCotes(); };
-    box.appendChild(card);
+    box.appendChild(card); syncZoneInputs(i);
   });
 }
 const zonesOk = () => S.zones.length > 0 && S.zones.every((z) => pos(z.A) && pos(z.B) && pos(z.C));
@@ -445,7 +558,7 @@ function show(step) {
   $('#nextBtn').textContent = step === 3 ? 'Voir mes 3 meubles' : (step === 4 ? 'Nouveau projet' : 'Continuer');
   $('#backBtn').textContent = 'Retour';
   if (step === 0) drawPhoto($('#cv0'));
-  if (step === 1) { if (!S.zones.length && !S.zonesTouched) newZone(); renderZones(); requestAnimationFrame(drawCotes); }
+  if (step === 1) { if (!S.zones.length && S.example && !S.zonesTouched) S.zones.push({ x: .12, y: .4, w: .76, h: .38, A: '', B: '', C: '', D: 0, man: {}, dr: .22 }); setDrawing(false); renderZones(); requestAnimationFrame(drawCotes); }
   if (step === 2) renderItems();
   if (step === 4 && currentProp()) renderResult(); else stopLoop();
   if (step !== 4) { S.selCell = null; $('#cellSheet').hidden = true; }
@@ -456,7 +569,7 @@ document.querySelectorAll('.steps button').forEach((b) => b.addEventListener('cl
 $('#backBtn').onclick = () => { if (S.step === 4 && currentProp()) { const i = PANES.findIndex((x) => x[0] === S.pane); if (i > 0) return goPane(PANES[i - 1][0], -1); } show(Math.max(0, S.step - 1)); };
 $('#nextBtn').onclick = () => {
   if (S.step === 1 && !zonesOk()) {
-    $('#zoneErr').textContent = S.zones.length ? 'Renseignez la largeur, la hauteur et la profondeur de chaque zone.' : 'Dessinez au moins une zone sur la photo.';
+    $('#zoneErr').textContent = S.zones.length ? 'Donnez au moins une mesure pour chaque zone (largeur, hauteur ou profondeur).' : 'Dessinez au moins une zone sur la photo.';
     $('#zoneErr').hidden = false; return;
   }
   $('#zoneErr').hidden = true;
@@ -1086,12 +1199,15 @@ function noticeFor(p, cu) {
 function currentProp() { return S.active >= 0 ? S.result[S.active] : null; }
 const eur = (n) => (Math.round((+n || 0) * 100) / 100).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: (+n % 1) ? 2 : 0 });
 function shopUrl(enseigne, q) {
-  // The shops' own search pages often answer "no result" to precise queries (sizes, references):
-  // a Google search limited to the shop's site always lands on the matching product pages.
+  // Straight to the shop's own site: its search page, already filled with the article. (A real product page replaces
+  // this link whenever api/products finds one.) Sizes like "250 x 60" are dropped: shop searches choke on them.
   const e = (enseigne || '').toLowerCase();
-  const site = e.includes('ikea') ? 'ikea.com/fr' : e.includes('leroy') ? 'leroymerlin.fr' : e.includes('casto') ? 'castorama.fr' : e.includes('but') ? 'but.fr' : '';
-  const words = String(q || '').replace(/IKEA |Leroy Merlin |Castorama /g, '').trim();
-  return 'https://www.google.com/search?q=' + encodeURIComponent(site ? `${words} site:${site}` : `${enseigne || ''} ${words}`.trim());
+  const words = String(q || '').replace(/IKEA |Leroy Merlin |Castorama |But /gi, '').trim();
+  const plain = encodeURIComponent(words.replace(/\b\d{2,}\s*[x×]\s*\d{2,}(?:\s*[x×]\s*\d{2,})?\s*(?:cm|mm)?(?=\s|$)/gi, ' ').replace(/\s+/g, ' ').trim() || words);
+  if (e.includes('ikea')) return 'https://www.ikea.com/fr/fr/search/?q=' + encodeURIComponent(words);
+  if (e.includes('leroy')) return 'https://www.leroymerlin.fr/recherche=' + plain;
+  if (e.includes('casto')) return 'https://www.castorama.fr/search?term=' + plain;
+  return 'https://www.google.com/search?q=' + encodeURIComponent(e.includes('but') ? `${words} site:but.fr` : `${enseigne || ''} ${words}`.trim());
 }
 function hwName(c, cu) { if (c === 'H') { const h = handleById(cu.poignee); return `Poignée ${h.nom}, ${hfinById(cu.hfin).nom.toLowerCase()}`; } if (c === 'I') return `Pied ${feetById(cu.pieds).nom.toLowerCase()}`; return (HW[c] || {}).nom || c; }
 /* Materials bought by the sheet or by the board: estimated from the parts of the notice, so they follow the plan and the finishes */
@@ -1244,7 +1360,7 @@ function renderList() {
   $('#pTotal').textContent = eur(tot); $('#pPrice').textContent = '≈ ' + eur(tot); $('#pPrice2').textContent = '≈ ' + eur(tot);
 }
 /* Real products for the list (photo, name, price, direct page), found by api/products and kept in this browser. */
-const PKEY = 'snug.products.v1'; let PROD = {}; try { PROD = JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch { PROD = {}; }
+const PKEY = 'snug.products.v2'; let PROD = {}; try { PROD = JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch { PROD = {}; }
 const pkey = (it) => `${(it.enseigne || '').toLowerCase()}|${String(it.recherche || it.article).toLowerCase()}`;
 const productOf = (it) => { const v = PROD[pkey(it)]; return v && v.found ? v.found : null; };
 const linkOf = (it) => { const p = productOf(it); return p && p.url ? p.url : shopUrl(it.enseigne, it.recherche); };
@@ -1532,13 +1648,13 @@ function mat(id) {
   if (id.startsWith('h:')) { const hf = hfinById(id.slice(2)); m = hf.wood ? new THREE.MeshStandardMaterial({ map: woodTex('chene'), roughness: .65 }) : new THREE.MeshStandardMaterial({ color: lin(hf.c), metalness: hf.metal, roughness: hf.rough }); }
   else if (id === 'leather') m = new THREE.MeshStandardMaterial({ color: lin('#7A4A2A'), roughness: .75 });
   else if (id === 'dark') m = new THREE.MeshStandardMaterial({ color: 0x141110, roughness: .9 });
-  else { const f = finById(id); m = f.wood ? new THREE.MeshStandardMaterial({ map: woodTex(f.id), roughness: .56, envMapIntensity: .45 }) : new THREE.MeshStandardMaterial({ color: lin(f.c), roughness: .62, envMapIntensity: .7, map: woodTex(f.id) }); if (!f.wood) m.color = new THREE.Color(0xffffff); }
+  else { const f = finById(id); m = f.wood ? new THREE.MeshStandardMaterial({ map: woodTex(f.id), roughness: .5, envMapIntensity: .8 }) : new THREE.MeshStandardMaterial({ color: lin(f.c), roughness: .42, envMapIntensity: .95, map: woodTex(f.id) }); if (!f.wood) m.color = new THREE.Color(0xffffff); }
   return (E.mats[id] = m);
 }
-const TILE = 520;
+const TILE = 640;
 function uvBox(geo, w, h, d, seed) {
   const uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]], ox = (seed * .37) % 1, oy = (seed * .61) % 1;
-  for (let f = 0; f < 6; f++) { const [U, V] = dims[f], rot = V > U * 1.15; for (let k = 0; k < 4; k++) { const i = f * 4 + k, u = uv.getX(i), v = uv.getY(i); if (rot) uv.setXY(i, v * V / TILE + ox, u * U / TILE + oy); else uv.setXY(i, u * U / TILE + ox, v * V / TILE + oy); } }
+  for (let f = 0; f < 6; f++) { const [U, V] = dims[f], rot = V > U * 1.15; for (let k = 0; k < 4; k++) { const i = f * 4 + k, u = uv.getX(i), v = uv.getY(i); if (rot) uv.setXY(i, v * V / (TILE * 2.2) + ox, u * U / TILE + oy); else uv.setXY(i, u * U / (TILE * 2.2) + ox, v * V / TILE + oy); } }
   uv.needsUpdate = true;
 }
 function bx(w, h, d, m, x, y, z, parent) {
@@ -1591,19 +1707,19 @@ function init3D() {
     E.r = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
     E.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     E.r.outputEncoding = THREE.sRGBEncoding; E.r.shadowMap.enabled = true; E.r.shadowMap.type = THREE.PCFSoftShadowMap;
-    E.r.toneMapping = THREE.ACESFilmicToneMapping; E.r.toneMappingExposure = .92; E.r.physicallyCorrectLights = false;
+    E.r.toneMapping = THREE.ACESFilmicToneMapping; E.r.toneMappingExposure = .8; E.r.physicallyCorrectLights = false;
     E.scene = new THREE.Scene(); E.cam = new THREE.PerspectiveCamera(35, 4 / 3, .05, 60);
     E.env = makeEnv(E.r); if (E.env) E.scene.environment = E.env;
-    E.scene.add(new THREE.HemisphereLight(0xfffaf2, 0x9c948a, .42)); E.scene.fog = new THREE.Fog(0xD6D0C7, 7, 15);
-    const spot = new THREE.SpotLight(0xffe7c7, .9, 0, .55, .75, 1); spot.position.set(.4, 3.6, 3.4); spot.target.position.set(0, .3, 0); E.scene.add(spot, spot.target);
-    const dl = new THREE.DirectionalLight(0xfff3e6, 1.0); dl.position.set(-1.6, 3.4, 2.8); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048);
+    E.scene.add(new THREE.HemisphereLight(0xfffaf2, 0x8a8178, .16)); E.scene.fog = new THREE.Fog(0xDAD5CE, 8, 16);
+    const spot = new THREE.SpotLight(0xffe7c7, .35, 0, .6, .85, 1); spot.position.set(.4, 3.6, 3.4); spot.target.position.set(0, .3, 0); E.scene.add(spot, spot.target);
+    const dl = new THREE.DirectionalLight(0xfff1e0, .95); dl.position.set(-2.2, 3.6, 2.6); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048); dl.shadow.radius = 5; dl.shadow.normalBias = .004;
     Object.assign(dl.shadow.camera, { left: -3.5, right: 3.5, top: 3, bottom: -1, near: .5, far: 12 }); dl.shadow.bias = -0.0008; E.scene.add(dl);
     const tx = (c, rep) => { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.anisotropy = 8; return t; };
-    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [10, 10]), color: 0xC9C2B8, roughness: .92, envMapIntensity: .3 });
-    E.wallMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [6, 2]), color: 0xDCD6CD, roughness: .95, envMapIntensity: .3 });
+    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [10, 10]), color: 0xA8A198, roughness: .72, envMapIntensity: .18 });
+    E.wallMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [6, 2]), color: 0xE2DDD6, roughness: .95, envMapIntensity: .35 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), E.floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; E.scene.add(floor);
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), E.wallMat); wall.position.set(0, 2.5, 0); wall.receiveShadow = true; E.scene.add(wall);
-    // (no skirting board: a seamless studio set reads more like a product photo)
+    const sk = new THREE.Mesh(new THREE.BoxGeometry(14, .07, .012), new THREE.MeshStandardMaterial({ color: 0xF1EEE9, roughness: .5 })); sk.position.set(0, .035, .006); sk.receiveShadow = true; sk.castShadow = true; E.scene.add(sk);
     E.root = new THREE.Group(); E.root.scale.setScalar(.001); E.scene.add(E.root);
     E.orbit = { theta: .32, phi: 1.2, r: 4, target: new THREE.Vector3(0, .3, .2) }; E.ray = new THREE.Raycaster();
     const ptrs = new Map(); let down = null, pinch = 0;
@@ -1668,6 +1784,12 @@ function buildModule(G, L, mi, M, feet) {
   bx(W, L.topT, D + 12, M.mP, 0, H - L.topT, 0, G);
   frontsOf(L, mi).forEach((f) => addFront(G, f, L, M));
   addDetails(G, L);
+  // contact shading inside every case: back panel and floor of the case
+  const aoM = E.aoMat || (E.aoMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(aoCanvas()), transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  L.cells.forEach((c) => {
+    const bk = new THREE.Mesh(new THREE.PlaneGeometry(c.w, c.h), aoM); bk.position.set(c.x + c.w / 2, c.y + c.h / 2, 6.6); G.add(bk);
+    const bt = new THREE.Mesh(new THREE.PlaneGeometry(c.w, D - 10), aoM); bt.rotation.x = -Math.PI / 2; bt.position.set(c.x + c.w / 2, c.y + .8, (D + 6) / 2); G.add(bt);
+  });
   // invisible touch targets, one per case, to open the edit menu
   L.cells.forEach((c) => {
     const [ci, ri] = c.key.split('-').map(Number);
@@ -1761,7 +1883,7 @@ function build3D() {
   if (!E.inited) return; const p = currentProp(), cu = S.custom[S.active]; if (!p || !cu) return;
   while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
   E.picks = []; E.opens = []; E.cellPicks = []; REG = null;
-  E.scene.background = lin('#D6D0C7');
+  E.scene.background = lin('#DAD5CE');
   const M = matsFor(cu), feet = feetById(cu.pieds);
   let maxX = 0, maxY = 0, maxD = 0, tvMod = null;
   placeModules(p).forEach((o) => {
@@ -1787,7 +1909,7 @@ function build3D() {
 function frame() {
   if (!E.ext) return; const fov = E.cam.fov * Math.PI / 180;
   const ext = Math.max(E.ext.w / Math.max(E.cam.aspect, .6), E.ext.h * 1.25, .5);
-  E.orbit.r = clamp(ext / (2 * Math.tan(fov / 2)) * 1.12, .8, 12); E.orbit.theta = .32; E.orbit.phi = 1.2;
+  E.orbit.r = clamp(ext / (2 * Math.tan(fov / 2)) * 1.3, .8, 12); E.orbit.theta = .32; E.orbit.phi = 1.2;
 }
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
@@ -1825,28 +1947,32 @@ function buildPhotoScene(Wp, Hp) {
   const p = currentProp(), cu = S.custom[S.active];
   if (PH.scene) disposeScene(PH.scene);
   const sc = new THREE.Scene(); if (T.env) sc.environment = T.env;
-  const long = Math.max(Wp, Hp), f = (long / 2) / Math.tan(34.5 * Math.PI / 180);
+  // The camera of the photo, recovered from the first zone (focal length and position): every module is then
+  // posed on its own rectangle of wall, so the furniture follows the perspective of the picture.
+  const zs = p.modules.map((m, mi) => zoneFor(m, mi) || DEFZ), f = zonePose(zs[0], Wp, Hp).f;
   const cam = new THREE.PerspectiveCamera(2 * Math.atan(Hp / 2 / f) * 180 / Math.PI, Wp / Hp, 10, 80000); cam.position.set(0, 0, 0); cam.lookAt(0, 0, -1); cam.updateMatrixWorld();
   const est = photoLight();
   sc.add(new THREE.HemisphereLight(est.sky, est.ground, .45 * est.k));
   sc.userData.exp = clamp(.55 + est.k * .35, .6, .95); const dl = new THREE.DirectionalLight(est.warm, 1.0 * est.k); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048); dl.shadow.bias = -0.0006; sc.add(dl);
   const M = matsFor(cu), feet = feetById(cu.pieds);
   PH.opens = []; PH.picks = []; REG = PH;
-  let floorY = null, minZ = Infinity, maxZ = -Infinity, cx = 0, topY = -Infinity;
+  const V = (v, k) => new THREE.Vector3(v[0] * k, -v[1] * k, -v[2] * k); // camera axes of the photo (y down, z forward) → three.js
+  let base = null;
   p.modules.forEach((m, mi) => {
-    const z = zoneFor(m, mi) || DEFZ, L = layoutModule(m, z);
-    const x0 = z.x * Wp, x1 = (z.x + z.w) * Wp, y1 = (z.y + z.h) * Hp, A = pos(z.A) || L.W;
-    const Z = f * A / Math.max(10, x1 - x0), Xl = (x0 - Wp / 2) * Z / f, Yb = -(y1 - Hp / 2) * Z / f;
-    const G = new THREE.Group(); G.position.set(Xl + (A - L.W) / 2, Yb, -Z - L.D); sc.add(G);
+    const z = zs[mi], L = layoutModule(m, z), P = zonePose(z, Wp, Hp, f), A = pos(z.A) || L.W, B = pos(z.B) || A * P.ratio;
+    const ex = V(P.r1, 1), ey = V(P.r2, -1), ez = V(P.r3, -1);
+    const G = new THREE.Group(); G.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex, ey, ez));
+    G.position.copy(V(P.o, A)).addScaledVector(ey, -B).addScaledVector(ex, (A - L.W) / 2); sc.add(G);
     buildModule(G, L, mi, M, feet);
-    if (!L.raised) floorY = floorY === null ? Yb : Math.min(floorY, Yb);
-    minZ = Math.min(minZ, -Z - L.D); maxZ = Math.max(maxZ, -Z); cx += Xl + A / 2; topY = Math.max(topY, Yb + L.H);
+    if (!base || (base.L.raised && !L.raised)) base = { G, L };
   });
-  REG = null; cx /= p.modules.length;
-  const fy = floorY === null ? topY - 2000 : floorY;
-  const fl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .4 })); fl.userData.own = true; fl.rotation.x = -Math.PI / 2; fl.position.set(cx, fy, minZ); fl.receiveShadow = true; sc.add(fl);
-  const wl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .22 })); wl.userData.own = true; wl.position.set(cx, fy, minZ - 2); wl.receiveShadow = true; sc.add(wl);
-  dl.position.set(cx - 1700, topY + 2600, maxZ + 2200); dl.target.position.set(cx, fy, (minZ + maxZ) / 2); sc.add(dl.target);
+  REG = null;
+  // shadow catchers: the floor under the furniture and the wall behind it, in the furniture's own frame
+  const fg = new THREE.Group(); fg.position.copy(base.G.position); fg.quaternion.copy(base.G.quaternion); sc.add(fg);
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .42 })); fl.userData.own = true; fl.rotation.x = -Math.PI / 2; fl.position.set(0, base.L.raised ? -2000 : 0, 0); fl.receiveShadow = true; fg.add(fl);
+  const wl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .22 })); wl.userData.own = true; wl.position.set(0, 0, -2); wl.receiveShadow = true; fg.add(wl);
+  fg.updateMatrixWorld(true);
+  const bl = base.L; dl.position.copy(fg.localToWorld(new THREE.Vector3(bl.W / 2 - 1700, bl.H + 2600, bl.D + 2200))); dl.target.position.copy(fg.localToWorld(new THREE.Vector3(bl.W / 2, 0, bl.D / 2))); sc.add(dl.target);
   Object.assign(dl.shadow.camera, { left: -4500, right: 4500, top: 4500, bottom: -4500, near: 100, far: 15000 }); dl.shadow.camera.updateProjectionMatrix();
   PH.scene = sc; PH.cam = cam;
 }
@@ -2073,7 +2199,7 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(0);
-if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S };
+if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, setPhoto, zonePose };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
   const id = new URLSearchParams(location.search).get('shot'); if (!id) return;
