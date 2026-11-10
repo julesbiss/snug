@@ -1261,26 +1261,77 @@ async function loadProducts(lines) {
   } catch {} finally { prodBusy = false; }
 }
 
-/* Guided basket: each product opens on the shop's site, you tap "Ajouter au panier" there, then tick it here. */
+/* Express basket: SNUG walks through the articles shop by shop. One tap opens the product on the shop's site,
+   you tap "Ajouter au panier" there and come back: the article is ticked and the next one is ready.
+   Progress is kept in this browser, so it survives the phone reloading the app. */
+const CKEY = 'snug.cart.v1'; let CART = {}; try { CART = JSON.parse(localStorage.getItem(CKEY) || '{}') || {}; } catch { CART = {}; }
+const saveCart = () => { try { localStorage.setItem(CKEY, JSON.stringify(CART)); } catch {} };
+const CART_URL = [[/ikea/i, 'https://www.ikea.com/fr/fr/shoppingcart/'], [/leroy/i, 'https://www.leroymerlin.fr/checkout/cart']];
+const cartUrlOf = (sh) => (CART_URL.find(([re]) => re.test(sh)) || [])[1] || '';
+const escH = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 function cartKey() { return (S.projId || 'courant') + ':' + S.active; }
+let cartPending = null, cartUndo = null;
 function renderCart() {
-  const lines = linesFor(S.active), done = (S.cartDone || (S.cartDone = {}))[cartKey()] || (S.cartDone[cartKey()] = {});
-  const shops = [...new Set(lines.map((l) => l.enseigne || 'Autre'))];
-  const n = lines.filter((l) => done[pkey(l)]).length;
+  const raw = linesFor(S.active), shops = [...new Set(raw.map((l) => l.enseigne || 'Autre'))];
+  const lines = shops.flatMap((sh) => raw.filter((l) => (l.enseigne || 'Autre') === sh));
+  const done = CART[cartKey()] || (CART[cartKey()] = {});
+  const n = lines.filter((l) => done[pkey(l)] === true).length, left = lines.filter((l) => !done[pkey(l)]).length;
+  const cur = lines.find((l) => !done[pkey(l)]);
+  const shopDone = (sh) => lines.filter((l) => (l.enseigne || 'Autre') === sh).every((l) => done[pkey(l)]);
+  let card = '';
+  if (cur) {
+    const p = productOf(cur), sh = cur.enseigne || 'Autre', inShop = lines.filter((l) => (l.enseigne || 'Autre') === sh);
+    card = `<div class="xcard">
+      <p class="mono small xstep">${escH(sh)} · article ${inShop.indexOf(cur) + 1} / ${inShop.length}${shops.length > 1 ? ` · magasin ${shops.indexOf(sh) + 1} / ${shops.length}` : ''}</p>
+      <div class="xrow">${p && p.image ? `<img src="${escH(p.image)}" alt="" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${escH(cur.article)}</b>${p && p.name ? `<span>${escH(p.name)}</span>` : ''}<span>${eur(cur.prix)}${p && p.ref ? ' · réf. ' + escH(p.ref) : ''}</span></div></div>
+      <div class="xqty"><span>Quantité à ajouter</span><b>${cur.qte}</b></div>
+      <a class="btn primary xopen" id="xOpen" href="${escH(linkOf(cur))}" target="_blank" rel="noopener">${p && p.url ? 'Ouvrir le produit' : 'Chercher le produit'} chez ${escH(sh)} ↗</a>
+      <p class="muted small">Sur le site, touchez « Ajouter au panier »${cur.qte > 1 ? ` avec la quantité ${cur.qte}` : ''}, puis revenez ici : SNUG coche l’article et prépare le suivant.</p>
+      <div class="xsub"><button type="button" class="btn ghost sm" id="xDone">Déjà ajouté</button><button type="button" class="btn ghost sm" id="xSkip">Passer cet article</button></div>
+      ${cartUndo ? `<p class="xundo">✓ ${escH(cartUndo.name)} coché <button type="button" id="xUndo">Annuler</button></p>` : ''}
+    </div>`;
+  }
   const el = $('#cartSheet');
-  el.innerHTML = `<div class="in"><div class="rowb"><h1>Mon panier</h1><button class="btn ghost sm" id="cartClose">Fermer</button></div>
-    <p class="muted small">Pour chaque article : touchez <b>Ouvrir</b>, ajoutez-le au panier sur le site du magasin, revenez ici et cochez-le. À la fin, il ne reste qu’à valider chaque panier.</p>
-    <div class="cartprog"><span style="width:${lines.length ? Math.round(n / lines.length * 100) : 0}%"></span></div><p class="mono small">${n} / ${lines.length} articles ajoutés</p>
-    ${shops.map((sh) => `<h2 class="cshop">${sh}</h2>` + lines.filter((l) => (l.enseigne || 'Autre') === sh).map((l) => { const k = pkey(l), p = productOf(l);
-      return `<div class="citem${done[k] ? ' ok' : ''}">${p && p.image ? `<img src="${p.image}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${l.qte} × ${String(l.article).replace(/[<>&]/g, '')}</b><span>${eur(l.prix)}${p && p.ref ? ' · réf. ' + p.ref : ''}</span></div>
-        <a class="btn ghost sm" href="${linkOf(l)}" target="_blank" rel="noopener" data-k="${k}">Ouvrir</a><button type="button" class="ccheck" data-k="${k}" aria-pressed="${!!done[k]}" aria-label="Ajouté au panier">✓</button></div>`; }).join('')).join('')}
-    ${n === lines.length && lines.length ? '<p class="cartdone">Tout est dans vos paniers : il ne reste qu’à les valider sur chaque site.</p>' : ''}</div>`;
+  el.innerHTML = `<div class="in"><div class="rowb"><h1>Panier express</h1><button class="btn ghost sm" id="cartClose">Fermer</button></div>
+    <div class="cartprog"><span style="width:${lines.length ? Math.round((lines.length - left) / lines.length * 100) : 0}%"></span></div><p class="mono small">${n} / ${lines.length} articles ajoutés${left ? '' : ' · terminé'}</p>
+    ${card}
+    ${!left && lines.length ? '<p class="cartdone">Tout est dans vos paniers : il ne reste qu’à les valider sur chaque site.</p>' : ''}
+    ${shops.map((sh) => { const cu = cartUrlOf(sh), fin = shopDone(sh);
+      return `<div class="cshoph"><h2 class="cshop">${escH(sh)}</h2>${fin && cu ? `<a class="btn primary sm" href="${cu}" target="_blank" rel="noopener">Valider mon panier ↗</a>` : ''}</div>` + lines.filter((l) => (l.enseigne || 'Autre') === sh).map((l) => { const k = pkey(l), p = productOf(l), st = done[k];
+      return `<div class="citem${st === true ? ' ok' : st ? ' skip' : ''}${l === cur ? ' now' : ''}">${p && p.image ? `<img src="${escH(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${l.qte} × ${escH(l.article)}</b><span>${st === 'skip' ? 'Passé · ' : ''}${eur(l.prix)}</span></div>
+        <a class="btn ghost sm" href="${escH(linkOf(l))}" target="_blank" rel="noopener" data-k="${k}">Ouvrir</a><button type="button" class="ccheck" data-k="${escH(k)}" aria-pressed="${st === true}" aria-label="Ajouté au panier">✓</button></div>`; }).join(''); }).join('')}
+    ${n || Object.keys(done).length ? '<button type="button" class="btn ghost sm" id="cartReset">Tout recommencer</button>' : ''}</div>`;
   el.hidden = false;
-  $('#cartClose').onclick = () => { el.hidden = true; };
-  el.querySelectorAll('.ccheck').forEach((b) => { b.onclick = () => { const k = b.dataset.k; done[k] = !done[k]; renderCart(); }; });
+  const mark = (k, v) => { if (v) done[k] = v; else delete done[k]; saveCart(); };
+  $('#cartClose').onclick = () => { el.hidden = true; cartPending = null; };
+  el.querySelectorAll('.ccheck').forEach((b) => { b.onclick = () => { const k = b.dataset.k; cartUndo = null; mark(k, done[k] === true ? 0 : true); renderCart(); }; });
+  el.querySelectorAll('.citem a').forEach((a) => { a.onclick = () => { cartPending = { k: a.dataset.k, at: Date.now(), name: '' }; }; });
+  if (cur) {
+    const k = pkey(cur);
+    $('#xOpen').onclick = () => { cartPending = { k, at: Date.now(), name: cur.article }; };
+    $('#xDone').onclick = () => { cartUndo = { k, name: cur.article }; mark(k, true); renderCart(); };
+    $('#xSkip').onclick = () => { cartUndo = null; mark(k, 'skip'); renderCart(); };
+  }
+  if ($('#xUndo')) $('#xUndo').onclick = () => { mark(cartUndo.k, 0); cartUndo = null; renderCart(); };
+  if ($('#cartReset')) $('#cartReset').onclick = () => { CART[cartKey()] = {}; cartUndo = null; saveCart(); renderCart(); };
   loadProducts(lines);
 }
-$('#cartBtn').onclick = renderCart;
+/* Back from the shop's site: the article that was opened counts as added (with "Annuler" in case it wasn't). */
+function cartBack() {
+  if (!cartPending || document.visibilityState !== 'visible' || $('#cartSheet').hidden) return;
+  const { k, at, name } = cartPending; cartPending = null;
+  if (Date.now() - at < 2500) return; // came straight back: nothing was added
+  const done = CART[cartKey()] || (CART[cartKey()] = {});
+  if (done[k] === true) return;
+  done[k] = true; saveCart();
+  const l = linesFor(S.active).find((x) => pkey(x) === k);
+  cartUndo = { k, name: name || (l ? l.article : 'Article') };
+  renderCart(); $('#cartSheet').scrollTop = 0;
+}
+document.addEventListener('visibilitychange', cartBack);
+window.addEventListener('focus', cartBack);
+window.addEventListener('pageshow', cartBack);
+$('#cartBtn').onclick = () => { cartUndo = null; renderCart(); $('#cartSheet').scrollTop = 0; };
 $('#copyBtn').onclick = async () => {
   const p = currentProp(); if (!p) return;
   const txt = `${projectName()} · ${p.nom}\n` + linesFor(S.active).map((it) => `${it.qte}× ${it.article} (${it.enseigne}) ${eur(it.prix)}\n   ${shopUrl(it.enseigne, it.recherche)}`).join('\n');

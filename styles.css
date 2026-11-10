@@ -356,5 +356,27 @@ ol.instr li::marker{color:var(--accent);font-family:var(--f-num)}
 .ccheck{all:unset;cursor:pointer;flex:none;width:38px;height:38px;border-radius:19px;border:1.5px solid var(--line2);display:grid;place-items:center;color:transparent;font-weight:800}
 .ccheck[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .ccheck:focus-visible{outline:2px solid var(--accent)}
+.xcard{display:flex;flex-direction:column;gap:12px;margin:14px 0 6px;padding:16px;border-radius:18px;background:var(--surface2);border:1px solid var(--accent)}
+.xstep{color:var(--accent);margin:0}
+.xrow{display:flex;gap:12px;align-items:center}
+.xrow img,.xrow i{flex:none;width:84px;height:84px;border-radius:14px;object-fit:contain;background:#FFFFFF}
+.xrow i{background:var(--surface)}
+.xrow .ct{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.xrow .ct b{font-size:15.5px;font-weight:650;line-height:1.3}
+.xrow .ct span{font-size:12.5px;color:var(--muted)}
+.xqty{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:12px;background:var(--surface)}
+.xqty span{font-size:13px;color:var(--muted)}
+.xqty b{font-family:var(--f-num);font-size:26px;color:var(--accent)}
+.xopen{justify-content:center;min-height:52px;font-size:15.5px}
+.xcard p.small{margin:0}
+.xsub{display:flex;gap:8px;flex-wrap:wrap}
+.xsub .btn{flex:1}
+.xundo{margin:0;font-size:13.5px;color:var(--good);display:flex;align-items:center;gap:10px}
+.xundo button{all:unset;cursor:pointer;color:var(--fg);text-decoration:underline;font-weight:600}
+.cshoph{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.cshoph .cshop{margin-top:0}
+.citem.now{background:color-mix(in srgb,var(--accent) 10%,transparent);border-radius:12px;padding-inline:8px}
+.citem.skip .ct b{color:var(--muted)}
+#cartReset{margin-top:14px}
 .cartdone{background:var(--good-soft);color:var(--good);border-radius:12px;padding:12px;font-weight:600;font-size:14px}
 #cartBtn{align-self:stretch}
