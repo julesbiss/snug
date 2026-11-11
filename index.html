@@ -6,12 +6,12 @@
 <title>SNUG · Meubles sur mesure</title>
 <meta name="description" content="Prenez une photo, mesurez, dites ce qu'il faut ranger : trois meubles sur mesure avec la liste de courses et la notice de montage.">
 <meta name="theme-color" content="#F4F2EE">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="SNUG">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..800&family=Geist+Mono:wght@500;600&display=swap">
@@ -20,9 +20,11 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="logo" aria-label="SNUG">SNUG<i></i></div>
+    <button class="ibtn" id="homeBtn" aria-label="Retour à l’accueil" title="Accueil" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="logo" id="logo" aria-label="SNUG">SNUG<i></i></div>
+    <div class="apptitle" id="appTitle" hidden><b></b><span></span></div>
     <div class="hbtns">
-      <button class="ibtn" id="projBtn" aria-label="Mes projets" title="Mes projets"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><rect x="14" y="15" width="7" height="5" rx="1.5"/></svg></button>
+      <button class="ibtn" id="projBtn" hidden aria-label="Mes projets" title="Mes projets"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><rect x="14" y="15" width="7" height="5" rx="1.5"/></svg></button>
       <button class="ibtn" id="saveBtn" aria-label="Enregistrer le projet" title="Enregistrer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg></button>
     </div>
   </header>
@@ -34,6 +36,36 @@
   <nav class="steps" aria-label="Étapes">
     <button data-go="0">Projet</button><button data-go="1">Cotes</button><button data-go="2">Contenu</button><button data-go="3">Profil</button><button data-go="4">Résultat</button>
   </nav>
+
+  <section data-step="-1" hidden>
+    <div class="homepg">
+      <div class="hero2">
+        <img src="previews/biblio.jpg" alt="" width="640" height="400">
+        <div class="herotxt">
+          <h1>Votre meuble sur mesure, à partir d’une photo</h1>
+          <p>Trois propositions chiffrées, la liste de courses et la notice de montage.</p>
+          <button type="button" class="btn primary" id="homeNew"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Créer un meuble</button>
+        </div>
+      </div>
+      <button type="button" class="resumebtn" id="homeResume" hidden><span class="rdot"></span><span class="rtxt"><b></b><small></small></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      <div class="hsec" id="homeRecent" hidden>
+        <div class="rowb"><h2>Mes projets</h2><button type="button" class="link" id="homeAll">Tout voir</button></div>
+        <div class="hscroll" id="homeProj"></div>
+      </div>
+      <div class="hsec">
+        <h2>Que voulez-vous créer&nbsp;?</h2>
+        <div class="hscroll" id="homeTypes"></div>
+      </div>
+      <div class="hsec">
+        <h2>Comment ça marche</h2>
+        <ol class="how">
+          <li><i>1</i><div><b>Photographiez l’endroit</b><span>Tracez l’emplacement au doigt et donnez une mesure.</span></div></li>
+          <li><i>2</i><div><b>Dites ce qu’il faut ranger</b><span>Chaque objet reçoit une case à sa taille.</span></div></li>
+          <li><i>3</i><div><b>Choisissez et montez</b><span>Trois meubles chiffrés, la liste de courses et la notice pas à pas.</span></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
 
   <section data-step="0">
     <div class="col">
@@ -116,6 +148,7 @@
             <div class="overlay bottom"><span class="stagehint" id="hint3d">Glissez pour tourner</span><span class="sp"></span><button class="ibtn glass" id="openAll" aria-label="Tout ouvrir" title="Tout ouvrir"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 12h18M10 8.5h4M10 15.5h4"/></svg></button><button class="ibtn glass" id="recenter" aria-label="Recentrer la vue" title="Recentrer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/><circle cx="12" cy="12" r="2.5"/></svg></button><span class="pricechip" id="pPrice2"></span></div>
           </div>
         </div>
+        <div class="celldock" id="cellSheet" hidden role="region" aria-label="Modifier la case"></div>
         <div class="navbar"><button type="button" class="ibtn to3d" id="to3d" aria-label="Revoir le meuble en 3D" title="Revoir le meuble" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z M12 12l8-4.5 M12 12v9 M12 12L4 7.5"/></svg></button><nav class="cfgnav" id="cfgNav" aria-label="Étapes de personnalisation"></nav></div>
         <div class="panes" id="panes">
           <section class="pane" data-pane="modele">
@@ -175,9 +208,20 @@
   </div>
 </div>
 <div class="sheet" id="cartSheet" hidden role="dialog" aria-label="Mon panier"></div>
-<div class="cellsheet" id="cellSheet" hidden role="dialog" aria-label="Modifier la case"></div>
 <div class="toast" id="toast" hidden role="status"></div>
-<div class="bar"><div class="in"><button class="btn ghost" id="backBtn">Retour</button><button class="btn primary" id="nextBtn">Continuer</button></div></div>
+<div class="loading" id="loading" hidden role="status" aria-live="polite">
+  <div class="ldbox">
+    <svg class="ldmark" width="56" height="56" viewBox="0 0 56 56" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path class="l1" d="M8 44h40"/><path class="l2" d="M12 44V16h32v28"/><path class="l3" d="M12 30h32M28 16v28"/></svg>
+    <b>Conception de votre meuble</b>
+    <ul><li>Lecture des cotes</li><li>Choix des caissons et des panneaux</li><li>Calcul des prix et de la notice</li></ul>
+  </div>
+</div>
+<nav class="tabbar" id="tabbar" aria-label="Navigation">
+  <button type="button" id="tabHome" aria-current="page"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg><span>Accueil</span></button>
+  <button type="button" id="tabNew" class="fab" aria-label="Créer un meuble"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button type="button" id="tabProj"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h6l2 2h8v10H4z"/></svg><span>Mes projets</span></button>
+</nav>
+<div class="bar"><div class="in"><button class="btn ghost" id="backBtn">Retour</button><div class="barprice" id="barPrice" hidden><b></b><span></span></div><button class="btn primary" id="nextBtn">Continuer</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="engine.js"></script>
 <script src="app.js"></script>

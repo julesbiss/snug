@@ -280,7 +280,7 @@ function zq(z) { return z.q || (z.q = [[z.x, z.y], [z.x + z.w, z.y], [z.x + z.w,
 function zBox(z) { const q = zq(z), xs = q.map((p) => p[0]), ys = q.map((p) => p[1]); z.x = Math.min(...xs); z.y = Math.min(...ys); z.w = Math.max(...xs) - z.x; z.h = Math.max(...ys) - z.y; }
 function zMan(z) { return z.man || (z.man = { A: !!pos(z.A), B: !!pos(z.B), C: !!pos(z.C) }); }
 function zDepth(z) { const m = zMan(z); return m.C && pos(z.C) && pos(z.A) ? clamp(pos(z.C) / pos(z.A), .02, 3) : (z.dr || (z.dr = pos(z.C) && pos(z.A) ? pos(z.C) / pos(z.A) : .22)); }
-function zonePose(z, W, H, fForce) {
+function zonePoseH(z, W, H, f) {
   const [p0, p1, p2, p3] = zq(z).map(([x, y]) => [x * W - W / 2, y * H - H / 2]);
   // homography of the unit square onto the 4 corners (Heckbert)
   const dx1 = p1[0] - p2[0], dx2 = p3[0] - p2[0], sx = p0[0] - p1[0] + p2[0] - p3[0];
@@ -288,15 +288,56 @@ function zonePose(z, W, H, fForce) {
   const den = dx1 * dy2 - dx2 * dy1 || 1e-9, g = (sx * dy2 - dx2 * sy) / den, h = (dx1 * sy - sx * dy1) / den;
   const a = p1[0] - p0[0] + g * p1[0], b = p3[0] - p0[0] + h * p3[0], c = p0[0];
   const d = p1[1] - p0[1] + g * p1[1], e = p3[1] - p0[1] + h * p3[1], f0 = p0[1];
-  const long = Math.max(W, H); let f = fForce || (long / 2) / Math.tan(34.5 * Math.PI / 180);
-  // both directions of the rectangle converge: they are perpendicular in reality, which gives the focal length
-  if (!fForce && Math.abs(g) * long > .05 && Math.abs(h) * long > .05) { const f2 = -(a * b + d * e) / (g * h); if (f2 > 0) f = clamp(Math.sqrt(f2), long * .62, long * .98); }
   const n1 = [a / f, d / f, g], n2 = [b / f, e / f, h], l1 = Math.hypot(...n1) || 1e-9, l2 = Math.hypot(...n2) || 1e-9;
   const r1 = n1.map((v) => v / l1); let r2 = n2.map((v) => v / l2); const dt = r1[0] * r2[0] + r1[1] * r2[1] + r1[2] * r2[2];
   r2 = r2.map((v, i) => v - dt * r1[i]); const l = Math.hypot(...r2) || 1e-9; r2 = r2.map((v) => v / l);
   const r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
   // o: top-left corner, r1: along the width, r2: downward, r3: into the wall — camera axes (x right, y down, z forward), in units of the width A
   return { f, ratio: clamp(l2 / l1, .02, 50), o: [c / f / l1, f0 / f / l1, 1 / l1], r1, r2, r3, W, H };
+}
+/* The pose of the wall rectangle, made robust. Four corners placed with a finger never form a perfect perspective
+   rectangle, and a free fit turns that noise into a tilted, "falling" piece of furniture. So the fit knows what a
+   room is: the wall is vertical, its top and bottom edges are horizontal, and the phone was held nearly level.
+   Unknowns: camera pitch and (penalised) roll, the wall's angle, where the rectangle is, and its proportions.
+   The focal length comes from the photo's own data (EXIF) when present, else a phone main camera is assumed. */
+function photoFocal(W, H) { const f35 = S.f35 > 8 && S.f35 < 200 ? S.f35 : 26; return f35 / 43.27 * Math.hypot(W, H); }
+function zonePose(z, W, H, fForce) {
+  const f = fForce || photoFocal(W, H), P0 = zonePoseH(z, W, H, f), q = zq(z).map(([x, y]) => [x * W - W / 2, y * H - H / 2]);
+  const key = q.flat().map((v) => v.toFixed(1)).join() + '|' + f.toFixed(1); if (z._pk === key && z._pp) return z._pp;
+  const basis = (th, ps, ph) => {
+    const ct = Math.cos(th), st = Math.sin(th), cp = Math.cos(ps), sp = Math.sin(ps);
+    const g = [-sp * ct, cp * ct, st], e1 = [cp, sp, 0], e3 = [sp * st, -cp * st, ct], c = Math.cos(ph), s2 = Math.sin(ph);
+    const r1 = [c * e1[0] + s2 * e3[0], c * e1[1] + s2 * e3[1], c * e1[2] + s2 * e3[2]];
+    return { r1, r2: g, r3: [r1[1] * g[2] - r1[2] * g[1], r1[2] * g[0] - r1[0] * g[2], r1[0] * g[1] - r1[1] * g[0]] };
+  };
+  const g0 = P0.r2, th0 = Math.asin(clamp(g0[2], -1, 1)), ps0 = Math.atan2(-g0[0], g0[1]);
+  const e1 = [Math.cos(ps0), Math.sin(ps0), 0], e3 = [Math.sin(ps0) * Math.sin(th0), -Math.cos(ps0) * Math.sin(th0), Math.cos(th0)];
+  const dot = (a, b2) => a[0] * b2[0] + a[1] * b2[1] + a[2] * b2[2];
+  let p = [th0, ps0, Math.atan2(dot(P0.r1, e3), dot(P0.r1, e1)), P0.o[0], P0.o[1], P0.o[2], P0.ratio];
+  const long = Math.max(W, H), LAM = long * .22, C4 = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  const res = (v) => {
+    const B = basis(v[0], v[1], v[2]), out = [];
+    C4.forEach(([s, t], i) => { const X = v[3] + s * B.r1[0] + t * v[6] * B.r2[0], Y = v[4] + s * B.r1[1] + t * v[6] * B.r2[1], Z = Math.max(1e-4, v[5] + s * B.r1[2] + t * v[6] * B.r2[2]); out.push(f * X / Z - q[i][0], f * Y / Z - q[i][1]); });
+    out.push(LAM * v[1]); return out; // the roll costs: a level phone is the rule
+  };
+  const sq = (r) => r.reduce((a, b2) => a + b2 * b2, 0);
+  let r = res(p), cost = sq(r), mu = 1e-3;
+  if (isFinite(cost)) for (let it = 0; it < 24 && cost > 1e-6; it++) { // Levenberg-Marquardt, numeric Jacobian (7 unknowns, 9 residuals)
+    const n = 7, m = r.length, J = []; for (let j = 0; j < n; j++) { const h = 1e-5 * Math.max(1, Math.abs(p[j])), v = p.slice(); v[j] += h; const r2 = res(v); J.push(r2.map((x, i) => (x - r[i]) / h)); }
+    const A = [], g = []; for (let i = 0; i < n; i++) { A.push([]); let gi = 0; for (let k2 = 0; k2 < m; k2++) gi += J[i][k2] * r[k2]; g.push(-gi); for (let j = 0; j < n; j++) { let a2 = 0; for (let k2 = 0; k2 < m; k2++) a2 += J[i][k2] * J[j][k2]; A[i].push(a2); } }
+    let ok = false;
+    for (let tr = 0; tr < 6 && !ok; tr++) {
+      const M = A.map((row, i) => row.map((x, j) => (i === j ? x * (1 + mu) + 1e-12 : x)).concat([g[i]]));
+      for (let c = 0; c < n; c++) { let pv = c; for (let i = c + 1; i < n; i++) if (Math.abs(M[i][c]) > Math.abs(M[pv][c])) pv = i; [M[c], M[pv]] = [M[pv], M[c]]; const d = M[c][c] || 1e-12; for (let i = 0; i < n; i++) if (i !== c) { const k2 = M[i][c] / d; for (let j = c; j <= n; j++) M[i][j] -= k2 * M[c][j]; } }
+      const v = p.map((x, i) => x + M[i][n] / (M[i][i] || 1e-12)); v[6] = clamp(v[6], .02, 50);
+      const r2 = res(v), c2 = sq(r2);
+      if (isFinite(c2) && c2 < cost) { const gain = cost - c2; p = v; r = r2; cost = c2; mu = Math.max(1e-7, mu * .3); ok = true; if (gain < 1e-7) it = 99; } else mu *= 8;
+    }
+    if (!ok) break;
+  }
+  let out = P0;
+  if (p.every(isFinite) && p[5] > 0) { const B = basis(p[0], p[1], p[2]); out = { f, ratio: clamp(p[6], .02, 50), o: [p[3], p[4], p[5]], r1: B.r1, r2: B.r2, r3: B.r3, W, H, roll: p[1], pitch: p[0] }; }
+  z._pk = key; z._pp = out; return out;
 }
 // point of the box: s along the width (0..1), t down the height (0..1), c toward the viewer (in widths) → canvas pixel
 function zonePt(P, s, t, c) {
@@ -344,7 +385,7 @@ function drawZonesOn(g, W, H, zones, sel, full, k) {
     g.fillStyle = '#17130C'; g.font = `700 ${Math.round(12 * k)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), nx, ny + .5 * k);
     if (on) {
       // the 4 corners on the wall
-      bk.forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 9 * k, 0, Math.PI * 2); g.fillStyle = 'rgba(14,15,17,.75)'; g.fill(); g.strokeStyle = GOLD; g.lineWidth = 2.4 * k; g.stroke(); g.beginPath(); g.arc(x, y, 2.6 * k, 0, Math.PI * 2); g.fillStyle = GOLD; g.fill(); });
+      zq(z).map(([a, b]) => [a * W, b * H]).forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 9 * k, 0, Math.PI * 2); g.fillStyle = 'rgba(14,15,17,.75)'; g.fill(); g.strokeStyle = GOLD; g.lineWidth = 2.4 * k; g.stroke(); g.beginPath(); g.arc(x, y, 2.6 * k, 0, Math.PI * 2); g.fillStyle = GOLD; g.fill(); });
       // depth handle: the front corner that sits best inside the photo
       const inside = ([x, y]) => x > 24 * k && x < W - 24 * k && y > 24 * k && y < H - 24 * k;
       const hi = [3, 2, 0, 1].find((j) => inside(fr[j])); const hj = hi === undefined ? 3 : hi, hp = [clamp(fr[hj][0], 16 * k, W - 16 * k), clamp(fr[hj][1], 16 * k, H - 16 * k)];
@@ -561,23 +602,41 @@ function setPhoto(img, example, after) {
   document.querySelector('.photo.hero').classList.toggle('isEmpty', !!example);
   $('#photoLbl').lastChild.textContent = example ? 'Prendre une photo' : 'Changer de photo';
 }
+// The lens that took the photo: "focal length in 35 mm film" from the picture's EXIF data (wide, main or ultra-wide camera).
+async function exifF35(file) {
+  try {
+    const dv = new DataView(await file.slice(0, 262144).arrayBuffer()); if (dv.getUint16(0) !== 0xFFD8) return 0;
+    let o = 2; while (o + 4 < dv.byteLength) { const mk = dv.getUint16(o), len = dv.getUint16(o + 2); if (mk === 0xFFE1 && dv.getUint32(o + 4) === 0x45786966) { o += 10; break; } if ((mk & 0xFF00) !== 0xFF00) return 0; o += 2 + len; }
+    if (o + 8 >= dv.byteLength) return 0; const le = dv.getUint16(o) === 0x4949, u16 = (p) => dv.getUint16(p, le), u32 = (p) => dv.getUint32(p, le);
+    const find = (ifd, tag) => { const n = u16(ifd); for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (e + 12 > dv.byteLength) return null; if (u16(e) === tag) return e; } return null; };
+    const ex = find(o + u32(o + 4), 0x8769); if (!ex) return 0; const e = find(o + u32(ex + 8), 0xA405); return e ? u16(e + 8) : 0;
+  } catch { return 0; }
+}
 $('#photoIn').addEventListener('change', (e) => {
   const f = e.target.files && e.target.files[0]; if (!f) return;
+  S.f35 = 0; exifF35(f).then((v) => { S.f35 = v || 0; S.zones.forEach((zz) => { zz._pk = null; }); if (S.step === 1) drawCotes(); });
   const img = new Image(); img.src = URL.createObjectURL(f);
   S.zones = []; S.sel = 0; S.aiNotes = []; renderAiNotes(); setPhoto(img, false, () => aiPhoto()); renderZones();
 });
 
 /* ================= navigation ================= */
+const STEP_TITLES = ['Votre projet', 'Les cotes', 'Le contenu', 'Votre profil'];
 function show(step) {
-  S.step = step;
+  S.step = step; if (step >= 0) S.lastStep = step;
   document.querySelectorAll('[data-step]').forEach((s) => { s.hidden = +s.dataset.step !== step; });
+  // app chrome: at home the logo and the tab bar; inside a project a back arrow, the title of the screen, and the action bar
+  const home = step === -1; document.body.classList.toggle('home', home);
+  $('#homeBtn').hidden = home; $('#logo').hidden = !home; $('#appTitle').hidden = home; $('#saveBtn').hidden = home || step < 4; $('#saveBar').hidden = true;
+  if (!home) { $('#appTitle b').textContent = step === 4 ? (S.projName || projectName()) : STEP_TITLES[step]; $('#appTitle span').textContent = step === 4 ? 'Vos 3 propositions' : `Étape ${step + 1} sur 4`; }
+  if (home) renderHome();
   document.querySelectorAll('.steps button').forEach((b) => { const n = +b.dataset.go; b.className = n === step ? 'on' : (n < step ? 'done' : ''); });
-  $('#backBtn').hidden = step === 0;
+  $('#backBtn').hidden = step === 0; $('#backBtn').removeAttribute('aria-label'); $('#barPrice').hidden = true;
   $('#nextBtn').textContent = step === 3 ? 'Voir mes 3 meubles' : (step === 4 ? 'Nouveau projet' : 'Continuer');
   $('#backBtn').textContent = 'Retour';
   if (step === 0) drawPhoto($('#cv0'));
   if (step === 1) { if (!S.zones.length && S.example && !S.zonesTouched) S.zones.push({ x: .12, y: .4, w: .76, h: .38, A: '', B: '', C: '', D: 0, man: {}, dr: .22 }); setDrawing(false); renderZones(); requestAnimationFrame(drawCotes); }
   if (step === 2) renderItems();
+  document.body.classList.toggle('cfg', step === 4); if (step !== 4) document.body.classList.remove('celledit', 'longpane');
   if (step === 4 && currentProp()) renderResult(); else stopLoop();
   if (step !== 4) { S.selCell = null; $('#cellSheet').hidden = true; }
   updateBar();
@@ -592,14 +651,52 @@ $('#nextBtn').onclick = () => {
   }
   $('#zoneErr').hidden = true;
   if (S.step < 3) return show(S.step + 1);
-  if (S.step === 3) { show(4); generate(); return; }
+  if (S.step === 3) { // a short, honest wait: the design is computed while the three stages tick
+    const ld = $('#loading'), t0 = Date.now(); ld.hidden = false; void ld.offsetWidth; ld.classList.add('run');
+    setTimeout(() => { show(4); generate(); setTimeout(() => { ld.hidden = true; ld.classList.remove('run'); }, Math.max(0, 1150 - (Date.now() - t0))); }, 40);
+    return;
+  }
   if (S.step === 4 && currentProp()) { const i = PANES.findIndex((x) => x[0] === S.pane); if (i < PANES.length - 1) return goPane(PANES[i + 1][0], 1); $('#saveBtn').click(); window.scrollTo({ top: 0 }); return; }
-  newProject();
+  startNew();
 };
 function newProject() {
   S.result = [null, null, null]; S.projId = null; S.projName = ''; $('#result').hidden = true; $('#errBox').hidden = true; S.pane = 'modele'; show(0);
 }
-$('#newBtn').onclick = newProject;
+// a brand-new project: nothing kept from the previous one (photo, zones, objects)
+function startNew(type) {
+  S.f35 = 0; S.zones = []; S.sel = 0; S.zonesTouched = false; S.itemsBy = {}; S.customBy = {}; S.aiNotes = []; S.genZones = null; S.active = -1; S.custom = [null, null, null]; E.state = {}; E.framed = false;
+  if (type) S.project = type;
+  renderAiNotes(); renderOptions(); setPhoto(examplePhoto(), true); newProject();
+}
+$('#newBtn').onclick = () => startNew();
+$('#homeBtn').onclick = () => show(-1);
+$('#homeNew').onclick = () => startNew();
+$('#tabNew').onclick = () => { $('#sheet').hidden = true; document.body.classList.remove('insheet'); tabOn(false); startNew(); };
+$('#tabHome').onclick = () => { $('#sheet').hidden = true; document.body.classList.remove('insheet'); tabOn(false); show(-1); };
+$('#tabProj').onclick = () => $('#projBtn').click();
+$('#homeAll').onclick = () => $('#projBtn').click();
+$('#homeResume').onclick = () => show(S.lastStep === 4 && !currentProp() ? 3 : (S.lastStep || 0));
+/* Home: the project in progress, the saved projects (with the picture of the furniture), and the six kinds of furniture */
+function renderHome() {
+  const inProg = S.lastStep !== undefined && (S.lastStep > 0 || !S.example || !!currentProp());
+  const r = $('#homeResume'); r.hidden = !inProg;
+  if (inProg) { r.querySelector('b').textContent = 'Reprendre : ' + (S.projName || projectName()); r.querySelector('small').textContent = S.lastStep === 4 && currentProp() ? 'Vos 3 propositions sont prêtes' : `Étape ${Math.min(4, S.lastStep + 1)} sur 4 · ${STEP_TITLES[Math.min(3, S.lastStep)]}`; }
+  const list = readStore(), box = $('#homeProj'); box.innerHTML = ''; $('#homeRecent').hidden = !list.length;
+  list.slice(0, 8).forEach((pj) => {
+    const c = document.createElement('button'); c.type = 'button'; c.className = 'pcard';
+    const im = document.createElement('img'); im.alt = ''; im.loading = 'lazy'; im.src = pj.thumb || pj.photo || `previews/${pj.project || 'tv'}.jpg`;
+    const b = document.createElement('b'); b.textContent = pj.name || 'Projet sans nom';
+    const sm = document.createElement('small'); sm.textContent = `${(PROJECTS.find((x) => x[0] === pj.project) || [, 'Projet'])[1]} · ${new Date(pj.savedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`;
+    c.append(im, b, sm); c.onclick = () => loadProject(pj); box.appendChild(c);
+  });
+  const tb = $('#homeTypes');
+  if (!tb.children.length) PROJECTS.forEach(([id, nom, sub]) => {
+    const c = document.createElement('button'); c.type = 'button'; c.className = 'tcard';
+    const im = document.createElement('img'); im.alt = ''; im.loading = 'lazy'; im.src = `previews/${id}.jpg`;
+    const b = document.createElement('b'); b.textContent = nom; const sm = document.createElement('small'); sm.textContent = sub;
+    c.append(im, b, sm); c.onclick = () => startNew(id); tb.appendChild(c);
+  });
+}
 
 /* ================= geometry (mm, origin = bottom-left-back of the module) ================= */
 function zoneFor(m, mi) { const zs = S.genZones || S.zones; const k = (parseInt(m && m.zone, 10) || 0) - 1; return zs[k] || zs[mi] || null; }
@@ -818,12 +915,12 @@ $('#cAdd').onclick = () => {
 /* ================= photorealistic render (Cloudflare Workers AI free allowance, through api/render) ================= */
 S.real = {}; S.realOn = false; S.render = false;
 async function renderPing() {
-  try { const r = await fetch('api/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"task":"ping"}' }); const d = await r.json(); S.render = !!d.ok; } catch { S.render = false; }
+  try { const r = await fetch('api/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"task":"ping"}' }); const d = await r.json(); S.render = !!d.ok; S.renderBy = d.provider || null; } catch { S.render = false; }
   updateRealBtn();
 }
 function realKey() { return [S.active, JSON.stringify(S.custom[S.active] || {}), S.photo ? S.photo.src.slice(-48) : '', JSON.stringify(S.genZones || [])].join('|'); }
 function updateRealBtn() {
-  const b = $('#realBtn'); b.hidden = !(S.render && S.view === 'photo' && currentProp());
+  const b = $('#realBtn'); b.hidden = !(S.view === 'photo' && currentProp() && !S.example); // always offered on a real photo: if the service is not set up, tapping says how
   const has = !!S.real[realKey()], on = S.realOn && has;
   b.querySelector('span').textContent = on ? 'Aperçu' : 'Réaliste'; b.setAttribute('aria-pressed', String(on));
   const img = $('#realImg'); img.hidden = !(S.view === 'photo' && on); $('#cv3').hidden = !img.hidden ? true : false; if (on) img.src = S.real[realKey()];
@@ -849,6 +946,8 @@ async function makeReal() {
   const key = realKey();
   if (S.real[key]) { S.realOn = !S.realOn; updateRealBtn(); return; }
   const wait = $('#realWait'), btn = $('#realBtn'); if (!wait.hidden) return;
+  const SETUP = 'Le rendu réaliste efface l’ancien meuble et intègre le nouveau dans votre photo. Il lui faut un service d’images gratuit : Cloudflare (2 clés à ajouter dans Vercel, voir le README du projet).';
+  if (!S.render) { wait.hidden = false; $('#realMsg').textContent = SETUP; setTimeout(() => { wait.hidden = true; }, 9000); return; }
   wait.hidden = false; $('#realMsg').textContent = 'Création du rendu réaliste… environ 20 secondes';
   try {
     const product = productShot(); drawPhotoView(true);
@@ -861,10 +960,10 @@ async function makeReal() {
       hint: `${PROJ_EN[S.project] || 'a storage unit'} about ${R0(W)} mm wide and ${R0(Hm)} mm high` }) });
     const d = await res.json().catch(() => null);
     if (!d || !d.ok) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail };
-    S.real[key] = 'data:image/png;base64,' + d.image; S.realOn = true; wait.hidden = true; updateRealBtn();
+    S.real[key] = `data:${d.mime || 'image/png'};base64,` + d.image; S.realOn = true; wait.hidden = true; updateRealBtn();
   } catch (e) {
-    $('#realMsg').textContent = (e && e.code === 'rate_limited' ? 'Le quota gratuit du jour est atteint. Réessayez demain.' : 'Le rendu réaliste n’a pas pu être créé. Réessayez dans un moment.') + (e && e.detail ? ` (${String(e.detail).slice(0, 120)})` : '');
-    setTimeout(() => { wait.hidden = true; }, 6000);
+    $('#realMsg').textContent = e && e.code === 'not_included' ? 'L’offre gratuite de Google ne comprend pas la retouche d’image pour votre clé. ' + SETUP : (e && e.code === 'rate_limited' ? 'Le quota gratuit est atteint pour le moment. Réessayez plus tard.' : 'Le rendu réaliste n’a pas pu être créé. Réessayez dans un moment.') + (e && e.detail ? ` (${String(e.detail).slice(0, 120)})` : '');
+    setTimeout(() => { wait.hidden = true; }, 9000);
   }
   btn.blur();
 }
@@ -951,10 +1050,7 @@ $('#pdfNotice').onclick = () => makePdf('notice');
 $('#pdfAll').onclick = () => makePdf('all');
 // Result screen: the 3D view scrolls away with the page; a small button in the sticky bar brings it back.
 $('#to3d').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
-window.addEventListener('scroll', () => {
-  if (S.step !== 4) return; const st = $('#cfgTop').getBoundingClientRect().bottom < 40;
-  $('#to3d').hidden = !st; document.querySelector('.navbar').classList.toggle('stuck', st);
-}, { passive: true });
+
 
 /* ================= editing a case of the 3D model: type, hanging rail, shelf, merge, move ================= */
 const CELL_TYPES = [['ouvert', 'Ouvert', 'M8 10h32v28H8z'], ['porte', 'Porte', 'M10 6h28v36H10z M32 22v4'], ['tiroir', 'Tiroir', 'M6 14h36v20H6z M18 24h12'],
@@ -977,7 +1073,11 @@ function cellRules(L, c) {
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
   };
 }
-function openCell(ref) { S.selCell = ref; S.cellMsg = ''; if (window.scrollY > 40) window.scrollTo({ top: 0, behavior: 'smooth' }); setEditMode(false, true); renderCell(); if (E.inited) build3D(); }
+function openCell(ref) {
+  const first = !S.selCell; S.selCell = ref; S.cellMsg = ''; document.body.classList.add('celledit'); window.scrollTo({ top: 0 });
+  setEditMode(false, true); renderCell(); resize3D();
+  if (E.inited) { build3D(); if (first && E.orbit) { E.rBack = E.orbit.r; E.rTo = E.orbit.r * 1.28; } } // step back a little: an open door or drawer must stay in the picture
+}
 // "Modifier" mode: frames every case and explains that a case can be touched. Shown once automatically.
 function setEditMode(on, quiet) {
   S.showCells = !!on; $('#editBtn').setAttribute('aria-pressed', String(S.showCells)); $('#editTip').hidden = !S.showCells;
@@ -985,26 +1085,34 @@ function setEditMode(on, quiet) {
   if (!quiet && E.inited && S.view === '3d') build3D();
 }
 $('#editBtn').onclick = () => { if (S.view !== '3d') { S.view = '3d'; renderView(); } setEditMode(!S.showCells); };
-function closeCell() { if (!S.selCell) return; S.selCell = null; $('#cellSheet').hidden = true; if (E.inited) build3D(); }
+function closeCell() { if (!S.selCell) return; S.selCell = null; $('#cellSheet').hidden = true; document.body.classList.remove('celledit'); resize3D(); if (E.inited) { build3D(); if (E.rBack) { E.rTo = E.rBack; E.rBack = null; } } updateBar(); }
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
   const { col, k, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
   const where = n === 1 ? 'seule case' : X.k === col.cases[0] ? 'en bas' : X.k === col.cases[n - 1] ? 'en haut' : `case ${S.selCell.ri + 1} sur ${n}`;
   const btn = (id, label, extra = '') => `<button type="button" class="cbtn${extra}" data-op="${id}">${label}</button>`;
-  el.innerHTML = `<div class="rowb"><div><b>Colonne ${S.selCell.ci + 1} · ${where}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${k.contenu ? ' · ' + String(k.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="ibtn" id="cellClose" aria-label="Fermer">✕</button></div>
+  const ri = S.selCell.ri, ci = S.selCell.ci, nc = X.m.colonnes.length;
+  el.innerHTML = `<div class="chead"><div><b>Colonne ${ci + 1} · ${where}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${k.contenu ? ' · ' + String(k.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
+    <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>
+    <p class="clab">Façade</p>
     <div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${k.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
-    <div class="cmore"${S.cellMore ? '' : ' hidden'}><button type="button" class="switchrow small${rules.tringle && !k.tringle ? ' no' : ''}" role="switch" aria-checked="${!!k.tringle}" data-op="tringle"><span><b>Penderie</b><small>Une tringle pour suspendre des vêtements</small></span><i aria-hidden="true"></i></button>
-    <div class="cops">${btn('split', 'Ajouter une étagère', rules.split ? ' no' : '')}${S.selCell.ri < n - 1 ? btn('mergeUp', 'Fusionner avec le dessus') : ''}${S.selCell.ri > 0 ? btn('mergeDown', 'Fusionner avec le dessous') : ''}${S.selCell.ri < n - 1 ? btn('up', 'Monter') : ''}${S.selCell.ri > 0 ? btn('down', 'Descendre') : ''}${S.selCell.ci > 0 ? btn('left', '← Colonne') : ''}${S.selCell.ci < X.m.colonnes.length - 1 ? btn('right', 'Colonne →') : ''}</div></div>
-    <button type="button" class="cmorebtn" id="cellMore">${S.cellMore ? 'Moins d’options' : 'Étagère, penderie, déplacer…'}</button>
-    <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>`;
+    <p class="clab">Intérieur</p>
+    <div class="cgrid">${btn('split', '+ Étagère', rules.split ? ' no' : '')}<button type="button" class="cbtn${rules.tringle && !k.tringle ? ' no' : ''}" data-op="tringle" aria-pressed="${!!k.tringle}">${k.tringle ? '✓ Penderie' : 'Penderie'}</button>
+      ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}</div>
+    <p class="clab">Déplacer</p>
+    <div class="cgrid">${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}${btn('left', '← Colonne', ci > 0 ? '' : ' no')}${btn('right', 'Colonne →', ci < nc - 1 ? '' : ' no')}</div>`;
   el.hidden = false;
   $('#cellClose').onclick = closeCell;
-  $('#cellMore').onclick = () => { S.cellMore = !S.cellMore; renderCell(); };
   el.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => cellOp(b.dataset.op); });
 }
 function cellOp(op) {
   const X = cellCtx(S.selCell); if (!X) return; const { col, k, L, c } = X, rules = cellRules(L, c), ref = S.selCell, cs = col.cases, T = 18;
   const say = (m) => { S.cellMsg = m; renderCell(); };
+  const n0 = cs.length, nc0 = X.m.colonnes.length;
+  if ((op === 'mergeUp' || op === 'up') && ref.ri >= n0 - 1) return say('Cette case est déjà tout en haut de sa colonne.');
+  if ((op === 'mergeDown' || op === 'down') && ref.ri <= 0) return say('Cette case est déjà tout en bas de sa colonne.');
+  if (op === 'left' && ref.ci <= 0) return say('Cette colonne est déjà la première à gauche.');
+  if (op === 'right' && ref.ci >= nc0 - 1) return say('Cette colonne est déjà la dernière à droite.');
   if (op.startsWith('type:')) { const t = op.slice(5); if (rules[t]) return say(rules[t]); k.type = t; if (t !== 'ouvert' && k.contenu === 'rangement') k.contenu = ''; }
   else if (op === 'tringle') { if (!k.tringle && rules.tringle) return say(rules.tringle); k.tringle = !k.tringle; if (k.tringle && !k.contenu) k.contenu = 'penderie'; }
   else if (op === 'split') { if (rules.split) return say(rules.split); const h = (num(k.hauteur_mm) - T) / 2; cs.splice(ref.ri, 1, { ...k, hauteur_mm: h, tringle: false }, { hauteur_mm: h, type: 'ouvert', contenu: '' }); }
@@ -1014,7 +1122,8 @@ function cellOp(op) {
     cs.splice(Math.min(ref.ri, j), 2, merged); ref.ri = Math.min(ref.ri, j);
   } else if (op === 'up' || op === 'down') { const j = op === 'up' ? ref.ri + 1 : ref.ri - 1; [cs[ref.ri], cs[j]] = [cs[j], cs[ref.ri]]; ref.ri = j; }
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
-  X.p.edited = true; E.state = {}; S.cellMsg = ''; try { localStorage.setItem('snug.edited', '1'); } catch {}
+  X.p.edited = true; E.state = {}; S.cellMsg = '';
+  [0, 1].forEach((kk) => { getSt(`${S.active}:${ref.mi}:${ref.ci}-${ref.ri}:${kk}`).target = 1; }); // the case just changed opens, so the new door or drawer is seen working try { localStorage.setItem('snug.edited', '1'); } catch {}
   refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
   renderWarn(X.p);
 }
@@ -1359,7 +1468,8 @@ function renderCfgNav() {
 function updateBar() {
   if (S.step !== 4 || !currentProp()) return;
   const i = PANES.findIndex((x) => x[0] === S.pane);
-  $('#backBtn').hidden = false; $('#backBtn').textContent = i > 0 ? '← ' + PANES[i - 1][1] : 'Retour';
+  $('#backBtn').hidden = false; $('#backBtn').textContent = '←'; $('#backBtn').setAttribute('aria-label', i > 0 ? 'Retour : ' + PANES[i - 1][1] : 'Retour aux réglages');
+  const bp = $('#barPrice'), pr = currentProp(); bp.hidden = false; bp.querySelector('b').textContent = $('#pPrice').textContent; bp.querySelector('span').textContent = pr ? `${pr.nom} · ${pr.duree || ''}`.replace(/ · $/, '') : '';
   $('#nextBtn').textContent = i < PANES.length - 1 ? PANES[i + 1][1] + ' →' : 'Enregistrer';
 }
 function goPane(id, dir) {
@@ -1367,8 +1477,8 @@ function goPane(id, dir) {
   document.querySelectorAll('#panes .pane').forEach((p) => { const on = p.dataset.pane === id; p.hidden = !on; if (on) { p.classList.toggle('back', dir < 0); p.style.animation = 'none'; void p.offsetWidth; p.style.animation = ''; } });
   renderCfgNav();
   if (id === 'notice') renderNotice();
-  const top = $('#panes').getBoundingClientRect().top + window.scrollY - $('.navbar').offsetHeight - 12;
-  if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top) });
+  const long = id === 'liste' || id === 'notice'; document.body.classList.toggle('longpane', long); // lists and the notice need the whole screen: there the 3D view scrolls away
+  window.scrollTo({ top: 0 });
 }
 (function () {
   const el = $('#panes'); let t0 = null;
@@ -1397,7 +1507,7 @@ function renderList() {
   loadProducts(lines);
   const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '')), got = want.filter((it) => productOf(it)).length;
   $('#pPhotos').textContent = !want.length ? '' : got === want.length ? '' : prodBusy ? 'Recherche des photos et des fiches produits…' : S.prodFail ? 'Photos et fiches indisponibles pour le moment (le site du magasin n’a pas répondu). Les liens ouvrent la recherche sur son site.' : `${got} / ${want.length} fiches produits trouvées.`;
-  $('#pTotal').textContent = eur(tot); $('#pPrice').textContent = '≈ ' + eur(tot); $('#pPrice2').textContent = '≈ ' + eur(tot);
+  $('#pTotal').textContent = eur(tot); $('#pPrice').textContent = '≈ ' + eur(tot); $('#pPrice2').textContent = '≈ ' + eur(tot); updateBar();
 }
 /* Real products for the list (photo, name, price, direct page), found by api/products and kept in this browser. */
 const PKEY = 'snug.products.v2'; let PROD = {}; try { PROD = JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch { PROD = {}; }
@@ -1771,7 +1881,7 @@ function init3D() {
     E.orbit = { theta: .32, phi: 1.2, r: 4, target: new THREE.Vector3(0, .3, .2) }; E.ray = new THREE.Raycaster();
     const ptrs = new Map(); let down = null, pinch = 0;
     const dist = () => { const a = [...ptrs.values()]; return a.length < 2 ? 0 : (Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1); };
-    cv.addEventListener('pointerdown', (e) => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) down = { x: e.clientX, y: e.clientY, moved: false }; else { if (down) down.moved = true; pinch = dist(); } });
+    cv.addEventListener('pointerdown', (e) => { $('#hint3d').classList.add('gone'); E.rTo = null; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) down = { x: e.clientX, y: e.clientY, moved: false }; else { if (down) down.moved = true; pinch = dist(); } });
     cv.addEventListener('pointermove', (e) => {
       const p = ptrs.get(e.pointerId); if (!p) return; const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
       if (ptrs.size === 2) { const d = dist(); if (pinch) E.orbit.r = clamp(E.orbit.r * pinch / d, .6, 12); pinch = d; return; }
@@ -1784,8 +1894,13 @@ function init3D() {
     E.inited = true;
   } catch (err) { E.ok = false; S.view = 'photo'; }
 }
+let STAGE_H = 340;
+function stageSize() { // the 3D view takes the upper part of the screen and stays there while the settings scroll
+  STAGE_H = Math.round(clamp(window.innerHeight * (document.body.classList.contains('celledit') ? .4 : .43), 250, 470));
+  document.documentElement.style.setProperty('--stageH', STAGE_H + 'px');
+}
 function resize3D() {
-  if (!E.r) return; const w = $('#stage3d').clientWidth || 340, h = Math.round(Math.min(440, window.innerHeight * .46, w * .95));
+  stageSize(); if (!E.r) return; const w = $('#stage3d').clientWidth || 340, h = STAGE_H;
   E.r.setSize(w, h, false); $('#cv3d').style.height = h + 'px'; E.cam.aspect = w / h; E.cam.updateProjectionMatrix();
 }
 function pick(e) {
@@ -1851,7 +1966,7 @@ function buildModule(G, L, mi, M, feet) {
     }
     const sc = S.selCell;
     if (sc && sc.mi === mi && sc.ci === ci && sc.ri === ri) {
-      const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.w + 6, c.h + 6, D + 30)), new THREE.LineBasicMaterial({ color: 0xE9B26B }));
+      const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.w + 6, c.h + 6, D + 30)), new THREE.LineBasicMaterial({ color: 0xB9782A, toneMapped: false }));
       box.position.set(c.x + c.w / 2, c.y + c.h / 2, (D + 30) / 2 + 2); G.add(box);
     }
   });
@@ -2040,6 +2155,7 @@ function renderFrame() {
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
   const moving = applyOpens(E.opens, true);
+  if (E.rTo) { const o = E.orbit; o.r += (E.rTo - o.r) * .16; if (Math.abs(E.rTo - o.r) < .004) { o.r = E.rTo; E.rTo = null; } }
   const ob = E.orbit, sp = Math.sin(ob.phi), key = [ob.theta, ob.phi, ob.r, ob.target.x, ob.target.y, ob.target.z].map((v) => v.toFixed(4)).join();
   if (moving || key !== E.camKey) { E.dirty = true; E.camKey = key; }
   E.cam.position.set(ob.target.x + ob.r * sp * Math.sin(ob.theta), ob.target.y + ob.r * Math.cos(ob.phi), ob.target.z + ob.r * sp * Math.cos(ob.theta));
@@ -2051,7 +2167,7 @@ function renderView() {
   if (!E.ok) S.view = 'photo';
   $('#viewSeg').hidden = !E.ok;
   document.querySelectorAll('#viewSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
-  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d';
+  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d'; $('#hint3d').hidden = S.view !== '3d';
   if (S.view === '3d') {
     init3D(); if (!E.ok) return renderView();
     resize3D(); build3D(); if (!E.framed) { frame(); E.framed = true; } startLoop();
@@ -2086,7 +2202,7 @@ function buildPhotoScene(Wp, Hp) {
   const sc = new THREE.Scene(); if (T.env) sc.environment = T.env;
   // The camera of the photo, recovered from the first zone (focal length and position): every module is then
   // posed on its own rectangle of wall, so the furniture follows the perspective of the picture.
-  const zs = p.modules.map((m, mi) => zoneFor(m, mi) || DEFZ), f = zonePose(zs[0], Wp, Hp).f;
+  const zs = p.modules.map((m, mi) => zoneFor(m, mi) || DEFZ), f = photoFocal(Wp, Hp);
   const cam = new THREE.PerspectiveCamera(2 * Math.atan(Hp / 2 / f) * 180 / Math.PI, Wp / Hp, 10, 80000); cam.position.set(0, 0, 0); cam.lookAt(0, 0, -1); cam.updateMatrixWorld();
   const est = photoLight();
   sc.add(new THREE.HemisphereLight(est.sky, est.ground, .55 * est.k));
@@ -2341,14 +2457,19 @@ let toastT = null;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function snapshot() {
   return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, itemsBy: S.itemsBy, customBy: S.customBy, ambiance: S.ambiance,
-    zones: S.zones, level: S.level, tools: [...S.tools], shops: [...S.shops], example: S.example, photo: S.example ? null : (S.photoData || (S.photo && photoDataOf(S.photo))),
+    zones: S.zones.map(({ _pp, _pk, _dh, ...zz }) => zz), f35: S.f35 || 0, level: S.level, tools: [...S.tools], shops: [...S.shops], example: S.example, photo: S.example ? null : (S.photoData || (S.photo && photoDataOf(S.photo))),
     result: S.result, custom: S.custom, active: S.active, genZones: S.genZones, view: S.view };
 }
 function saveProject(name) {
   S.projName = name || `${projectName()} du ${new Date().toLocaleDateString('fr-FR')}`; if (!S.projId) S.projId = 'p' + Date.now().toString(36);
   const snap = snapshot(); snap.id = S.projId;
+  try { // the picture of the furniture, for the project cards
+    if (S.step === 4 && currentProp() && E.inited && S.view === '3d') { E.dirty = true; renderFrame(); const c = document.createElement('canvas'), src = $('#cv3d'); c.width = 360; c.height = Math.round(360 * src.height / src.width); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); snap.thumb = c.toDataURL('image/jpeg', .8); }
+    else { const old = readStore().find((x) => x.id === S.projId); if (old && old.thumb) snap.thumb = old.thumb; }
+  } catch {}
   const list = readStore().filter((x) => x.id !== S.projId); list.unshift(snap);
   if (writeStore(list)) toast('Projet enregistré'); else toast('Mémoire du navigateur pleine : supprimez un ancien projet.');
+  if (S.step === 4) $('#appTitle b').textContent = S.projName;
 }
 $('#saveBtn').onclick = () => {
   if (S.projId) { saveProject(S.projName); return; }
@@ -2358,7 +2479,7 @@ $('#saveOk').onclick = () => { saveProject($('#saveName').value.trim()); $('#sav
 $('#saveCancel').onclick = () => { $('#saveBar').hidden = true; };
 function loadProject(pj) {
   S.projId = pj.id; S.projName = pj.name || ''; S.project = pj.project || 'tv'; S.fab = pj.fab || 'mixte'; S.level = pj.level || 'bricoleur';
-  S.tools = new Set(pj.tools || []); S.shops = new Set(pj.shops || []); S.zones = Array.isArray(pj.zones) ? pj.zones : []; S.sel = 0; S.redraw = null;
+  S.f35 = pj.f35 || 0; S.tools = new Set(pj.tools || []); S.shops = new Set(pj.shops || []); S.zones = Array.isArray(pj.zones) ? pj.zones : []; S.sel = 0; S.redraw = null;
   S.itemsBy = pj.itemsBy && typeof pj.itemsBy === 'object' ? pj.itemsBy : {}; S.customBy = pj.customBy && typeof pj.customBy === 'object' ? pj.customBy : {}; S.ambiance = pj.ambiance || 'bois';
   S.result = Array.isArray(pj.result) ? pj.result : [null, null, null]; S.custom = Array.isArray(pj.custom) ? pj.custom : [null, null, null];
   S.active = S.result[pj.active] ? pj.active : S.result.findIndex(Boolean); S.genZones = pj.genZones || null; S.view = pj.view || '3d';
@@ -2369,14 +2490,14 @@ function loadProject(pj) {
   renderOptions();
   const img = pj.photo ? (() => { const i = new Image(); i.src = pj.photo; return i; })() : examplePhoto();
   setPhoto(img, !pj.photo, () => show(S.result.some(Boolean) ? 4 : clamp(num(pj.step), 0, 3)));
-  $('#sheet').hidden = true; toast(`Projet « ${S.projName} » ouvert`);
+  $('#sheet').hidden = true; document.body.classList.remove('insheet'); tabOn(false); toast(`Projet « ${S.projName} » ouvert`);
 }
 function renderProjects() {
   const box = $('#projList'); box.innerHTML = ''; const list = readStore();
-  if (!list.length) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'Aucun projet enregistré pour l’instant. Utilisez « Enregistrer » en haut de l’écran.'; box.appendChild(p); return; }
+  if (!list.length) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'Aucun projet enregistré pour l’instant. Une fois vos 3 propositions affichées, touchez le signet en haut à droite.'; box.appendChild(p); return; }
   list.forEach((pj) => {
     const c = document.createElement('div'); c.className = 'card proj';
-    const im = document.createElement('img'); im.alt = ''; im.src = pj.photo || examplePhoto().src;
+    const im = document.createElement('img'); im.alt = ''; im.src = pj.thumb || pj.photo || `previews/${pj.project || 'tv'}.jpg`;
     const meta = document.createElement('div'); meta.className = 'meta'; const b = document.createElement('b'); b.textContent = pj.name || 'Projet sans nom';
     const s = document.createElement('span'); s.className = 'muted small'; s.textContent = `${(PROJECTS.find((x) => x[0] === pj.project) || [, 'Projet'])[1]} · ${new Date(pj.savedAt).toLocaleDateString('fr-FR')} · ${(pj.result || []).filter(Boolean).length} proposition(s)`; meta.append(b, s);
     const acts = document.createElement('div'); acts.className = 'acts';
@@ -2386,14 +2507,15 @@ function renderProjects() {
     acts.append(o, d); c.append(im, meta, acts); box.appendChild(c);
   });
 }
-$('#projBtn').onclick = () => { renderProjects(); $('#sheet').hidden = false; stopLoop(); };
-$('#sheetClose').onclick = () => { $('#sheet').hidden = true; if (S.step === 4 && currentProp() && S.view === '3d') startLoop(); };
+const tabOn = (proj) => { $('#tabProj').toggleAttribute('aria-current', proj); if (proj) $('#tabProj').setAttribute('aria-current', 'page'); $('#tabHome').toggleAttribute('aria-current', !proj); if (!proj) $('#tabHome').setAttribute('aria-current', 'page'); };
+$('#projBtn').onclick = () => { renderProjects(); $('#sheet').hidden = false; stopLoop(); document.body.classList.add('insheet'); tabOn(true); };
+$('#sheetClose').onclick = () => { $('#sheet').hidden = true; document.body.classList.remove('insheet'); tabOn(false); if (S.step === -1) renderHome(); if (S.step === 4 && currentProp() && S.view === '3d') startLoop(); };
 
 aiPing(); renderPing();
 renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
-show(0);
+show(-1);
 if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {

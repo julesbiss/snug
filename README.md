@@ -60,6 +60,9 @@ L'appli le signale à l'utilisateur avant l'analyse d'une photo.
 
 ### Activer le rendu réaliste (gratuit)
 
+Sans clés Cloudflare, le bouton « Réaliste » essaie d'abord la clé Gemini déjà configurée (modèles d'image de Google). Si l'offre gratuite de Google ne l'autorise pas pour cette clé, l'appli le dit et renvoie aux étapes ci-dessous.
+
+
 Bouton « Réaliste » dans la vue « Chez moi » : une IA de retouche remplace l'ancien meuble par le nouveau dans la photo.
 Quota gratuit Cloudflare : 10 000 « neurons » par jour, soit environ 60 rendus.
 
