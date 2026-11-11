@@ -742,7 +742,7 @@ async function aiCall(body) {
   let d = null; try { d = await res.json(); } catch { throw { code: 'upstream_error' }; }
   if (!res.ok || !d || d.code) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail }; return d;
 }
-const aiCopy = (code) => code === 'rate_limited' ? 'Le quota gratuit du jour est atteint. Réessayez plus tard ou continuez sans l’IA.'
+const aiCopy = (code) => code === 'rate_limited' ? 'L’IA gratuite est très sollicitée en ce moment. Réessayez dans une minute, ou continuez sans elle.'
   : code === 'offline' ? 'Pas de connexion : continuez sans l’IA.' : 'L’IA n’a pas pu répondre. Continuez sans elle, ou réessayez.';
 function aiCatalogue(only) {
   const o = {}; PROJECTS.forEach(([id]) => { if (only && id !== only) return; o[id] = ENG.itemsOf(id).map((d) => ({ id: d.id, nom: d.nom, kind: d.kind || '', max: d.max || 1, options: d.options ? d.options.map((x) => x[0]) : undefined })); });
@@ -1830,7 +1830,7 @@ function buildModule(G, L, mi, M, feet) {
   L.shelves.forEach((s) => bx(s.w, t, D - 26, M.mS, s.x, s.y, 6, G));
   bx(W, L.topT, D + 12, M.mP, 0, H - L.topT, 0, G);
   frontsOf(L, mi).forEach((f) => addFront(G, f, L, M));
-  addDetails(G, L);
+  addDetails(G, L); addProps(G, L);
   // contact shading inside every case: back panel and floor of the case
   const aoK = REG && REG !== E ? 'aoMatPh' : 'aoMat', aoM = E[aoK] || (E[aoK] = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(aoCanvas()), transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 }));
   L.cells.forEach((c) => {
@@ -1889,6 +1889,34 @@ function addFront(G, f, L, M) {
     else { hg = makeHandle(M.h, M.mH, 'h', cw); hg.position.set(cw / 2, M.h.top ? ch - 14 : ch - 50, cd); }
     gr.add(hg);
     register(gr, [front, hg], { kind: 'slide', dist: cd * .7, base }, f.key);
+  }
+}
+/* What goes in the cases, drawn simply so the plan reads at a glance: a box, an amp, speakers, records, books, crates.
+   Dark matte objects, slightly inset, never touching the fronts (closed cases stay empty, you cannot see inside). */
+function addProps(G, L) {
+  const D = L.D, dark = mat('dark'), grey = E.mats.propGrey || (E.mats.propGrey = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: .55, metalness: .25 }));
+  const paper = E.mats.propPaper || (E.mats.propPaper = new THREE.MeshStandardMaterial({ color: 0xcfc6b4, roughness: .9 }));
+  const cloth = E.mats.propCloth || (E.mats.propCloth = new THREE.MeshStandardMaterial({ color: 0x5a5e66, roughness: .95 }));
+  const box = (w, h, d, m, x, y, z) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x + w / 2, y + h / 2, z + d / 2); me.castShadow = true; me.receiveShadow = true; G.add(me); return me; };
+  L.cells.forEach((c) => {
+    if (c.type !== 'ouvert' || c.rod) return;
+    const k = String(c.contenu || '').toLowerCase(), cx = c.x + c.w / 2, zBack = Math.max(8, D - 20), seed = rng(Math.round(c.x + c.y * 7));
+    if (/ampli|lecteur|console/.test(k)) { const w = Math.min(c.w - 40, k.includes('console') ? 300 : 430), h = Math.min(c.h - 30, k.includes('console') ? 60 : 110), d = Math.min(D - 60, 340); const b = box(w, h, d, grey, cx - w / 2, c.y + 2, zBack - d); const led = new THREE.Mesh(new THREE.BoxGeometry(Math.min(w * .7, 240), 4, 1), new THREE.MeshBasicMaterial({ color: 0x9ad7ff, toneMapped: false })); led.position.set(cx, c.y + h * .55, zBack + .6); G.add(led); }
+    else if (/box|décodeur|decodeur/.test(k)) { const w = Math.min(c.w - 60, 240), h = Math.min(c.h - 40, 40), d = Math.min(D - 80, 200); box(w, h, d, grey, cx - w / 2, c.y + 2, zBack - d - 20); }
+    else if (/enceinte/.test(k)) { const w = Math.min(c.w - 50, 180), h = Math.min(c.h - 30, 260), d = Math.min(D - 60, 200); box(w, h, d, cloth, cx - w / 2, c.y + 2, zBack - d); }
+    else if (/vinyle/.test(k)) { const n = Math.max(6, Math.floor((c.w - 40) / 9)), x0 = c.x + 20, h = Math.min(c.h - 25, 312), d = Math.min(D - 50, 312); for (let i = 0; i < n; i++) { const t = 2 + seed() * 3, lean = seed() * 4; const m = box(t, h - lean, d, i % 3 ? paper : dark, x0 + i * ((c.w - 40) / n), c.y + 2, zBack - d); m.rotation.z = (seed() - .5) * .02; } }
+    else if (/livre|poche|beaux/.test(k)) { let x = c.x + 14; const h0 = Math.min(c.h - 20, k.includes('poche') ? 180 : k.includes('beaux') ? 300 : 230), d = Math.min(D - 40, 200); const tones = [0x6b3f2a, 0x2f4858, 0x8c8a7a, 0xb04a3a, 0x3a3a3a, 0xd9c7a4]; let i = 0; while (x < c.x + c.w - 30 && i < 40) { const t = 14 + seed() * 22, h = h0 * (.75 + seed() * .25); const m = E.mats['bk' + (i % 6)] || (E.mats['bk' + (i % 6)] = new THREE.MeshStandardMaterial({ color: tones[i % 6], roughness: .8 })); box(t, h, d, m, x, c.y + 2, zBack - d); x += t + 1.5; i++; if (seed() < .12) x += 30; } }
+    else if (/chaussure/.test(k)) { let x = c.x + 20; let i = 0; while (x + 90 < c.x + c.w - 10 && i < 8) { box(90, 60, Math.min(D - 60, 260), i % 2 ? dark : cloth, x, c.y + 2, zBack - Math.min(D - 60, 260)); x += 105; i++; } }
+    else if (/pull|linge|vêtement|vetement/.test(k)) { let y = c.y + 2; for (let i = 0; i < 3 && y + 60 < c.y + c.h - 10; i++) { box(Math.min(c.w - 60, 320), 55, Math.min(D - 80, 280), i % 2 ? cloth : paper, cx - Math.min(c.w - 60, 320) / 2, y, zBack - Math.min(D - 80, 280)); y += 62; } }
+    else if (/aspirateur/.test(k)) { box(60, Math.min(c.h - 60, 1100), 60, grey, cx - 30, c.y + 2, zBack - 140); box(240, 60, 240, grey, cx - 120, c.y + 2, zBack - 250); }
+    else if (/valise/.test(k)) { box(Math.min(c.w - 60, 420), Math.min(c.h - 30, 260), Math.min(D - 60, 300), grey, cx - Math.min(c.w - 60, 420) / 2, c.y + 2, zBack - Math.min(D - 60, 300)); }
+    else if (/vin|bouteille/.test(k)) { const n = Math.floor((c.w - 40) / 95); for (let i = 0; i < n; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(38, 38, Math.min(D - 60, 300), 14), dark); b.rotation.x = Math.PI / 2; b.position.set(c.x + 60 + i * 95, c.y + 40, zBack - Math.min(D - 60, 300) / 2); G.add(b); } }
+  });
+  // the turntable on top, when asked
+  if ((curItems().platine || 0) > 0 && !L.raised && L.W >= 900 && S.project === 'tv') {
+    const x = L.W - 480 - 40, y = L.H, z = (L.D - 360) / 2;
+    box(450, 60, 360, mat('chene'), x, y, z); const pl = new THREE.Mesh(new THREE.CylinderGeometry(150, 150, 8, 40), dark); pl.position.set(x + 200, y + 64, z + 180); G.add(pl);
+    const arm = box(10, 8, 160, grey, x + 390, y + 70, z + 90); arm.rotation.y = .25;
   }
 }
 function addDetails(G, L) {
@@ -2022,9 +2050,6 @@ function stopLoop() { E.running = false; }
 function renderView() {
   if (!E.ok) S.view = 'photo';
   $('#viewSeg').hidden = !E.ok;
-  function renderView() {
-  if (!E.ok) S.view = 'photo';
-  $('#viewSeg').hidden = !E.ok;
   document.querySelectorAll('#viewSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
   $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d';
   if (S.view === '3d') {
@@ -2035,15 +2060,25 @@ function renderView() {
 }
 function refreshView() { if (S.view === '3d' && E.inited) build3D(); else { drawPhotoView(true); updateOpenBtn(); } updateRealBtn(); }
 const PH = { scene: null, cam: null, opens: [], picks: [], ok: true };
+function grainCanvas() {
+  if (TEX._grain) return TEX._grain;
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data, r = rng(5);
+  for (let i = 0; i < d.length; i += 4) { const v = 128 + (r() - .5) * 90; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  g.putImageData(img, 0, 0); TEX._grain = c; return c;
+}
 function photoLight() {
+  // The light of the room, read in the photo around the zone itself: the wall just above the furniture tells
+  // the colour and level of the light that will fall on it; the floor in front tells the bounce from below.
   try {
-    const c = document.createElement('canvas'); c.width = 24; c.height = 24; const g = c.getContext('2d'); g.drawImage(S.photo, 0, 0, 24, 24); const d = g.getImageData(0, 0, 24, 24).data;
-    let top = [0, 0, 0], bot = [0, 0, 0], nt = 0, nb = 0, lum = 0;
-    for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) { const i = (y * 24 + x) * 4, r = d[i], gg = d[i + 1], b = d[i + 2]; lum += (.2126 * r + .7152 * gg + .0722 * b) / 255; if (y < 12) { top[0] += r; top[1] += gg; top[2] += b; nt++; } if (y >= 18) { bot[0] += r; bot[1] += gg; bot[2] += b; nb++; } }
-    lum /= 576; top = top.map((v) => v / nt / 255); bot = bot.map((v) => v / nb / 255);
-    const mx = Math.max(top[0], top[1], top[2], .01), warm = new THREE.Color(.45 + .55 * top[0] / mx, .45 + .55 * top[1] / mx, .45 + .55 * top[2] / mx);
-    return { warm, k: clamp(.2 + lum * 1.05, .4, 1.15), sky: new THREE.Color(.5 + top[0] * .5, .5 + top[1] * .5, .5 + top[2] * .5), ground: new THREE.Color(bot[0], bot[1], bot[2]) };
-  } catch { return { warm: new THREE.Color(1, .95, .9), k: 1, sky: new THREE.Color(1, 1, 1), ground: new THREE.Color(.5, .45, .4) }; }
+    const z = S.zones[0] || DEFZ, N = 48, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); g.drawImage(S.photo, 0, 0, N, N); const d = g.getImageData(0, 0, N, N).data;
+    const avg = (x0, y0, x1, y1) => { let r = 0, gg = 0, b = 0, n = 0; for (let y = Math.max(0, y0); y < Math.min(N, y1); y++) for (let x = Math.max(0, x0); x < Math.min(N, x1); x++) { const i = (y * N + x) * 4; r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; } return n ? [r / n / 255, gg / n / 255, b / n / 255] : [.6, .58, .55]; };
+    const X0 = Math.round(z.x * N), X1 = Math.round((z.x + z.w) * N), Y0 = Math.round(z.y * N), Y1 = Math.round((z.y + z.h) * N);
+    const wall = avg(X0, Y0 - 6, X1, Y0), floor = avg(X0, Y1, X1, Y1 + 6), all = avg(0, 0, N, N);
+    const lum = (v) => .2126 * v[0] + .7152 * v[1] + .0722 * v[2];
+    const lw = lum(wall), la = lum(all), level = clamp(lw * .7 + la * .3, .08, 1);
+    const mx = Math.max(wall[0], wall[1], wall[2], .01), tint = wall.map((v) => .35 + .65 * v / mx); // hue of the light, with its saturation softened
+    return { wallLum: lw, warm: new THREE.Color(...tint), k: clamp(.25 + level * 1.1, .35, 1.2), sky: new THREE.Color(...tint.map((v) => v * (.6 + level * .4))), ground: new THREE.Color(...floor), level };
+  } catch { return { wallLum: .6, warm: new THREE.Color(1, .95, .9), k: 1, sky: new THREE.Color(1, 1, 1), ground: new THREE.Color(.5, .45, .4), level: .6 }; }
 }
 function buildPhotoScene(Wp, Hp) {
   const p = currentProp(), cu = S.custom[S.active];
@@ -2054,9 +2089,13 @@ function buildPhotoScene(Wp, Hp) {
   const zs = p.modules.map((m, mi) => zoneFor(m, mi) || DEFZ), f = zonePose(zs[0], Wp, Hp).f;
   const cam = new THREE.PerspectiveCamera(2 * Math.atan(Hp / 2 / f) * 180 / Math.PI, Wp / Hp, 10, 80000); cam.position.set(0, 0, 0); cam.lookAt(0, 0, -1); cam.updateMatrixWorld();
   const est = photoLight();
-  sc.add(new THREE.HemisphereLight(est.sky, est.ground, .45 * est.k));
-  sc.userData.exp = clamp(.55 + est.k * .35, .6, .95); const dl = new THREE.DirectionalLight(est.warm, 1.0 * est.k); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048); dl.shadow.bias = -0.0006; sc.add(dl);
+  sc.add(new THREE.HemisphereLight(est.sky, est.ground, .55 * est.k));
+  sc.userData.exp = clamp(.3 + est.level * .8, .4, .95); sc.userData.wall = est.wallLum; const dl = new THREE.DirectionalLight(est.warm, 1.0 * est.k); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048); dl.shadow.bias = -0.0006; sc.add(dl);
   const M = matsFor(cu), feet = feetById(cu.pieds);
+  // in a real room there is no studio softbox: the reflection map is dimmed to the level of the photo, and tinted like it
+  const roomEnv = clamp(.15 + est.level * .5, .15, .6);
+  Object.values(E.mats).forEach((m) => { if (m.envMapIntensity === undefined) return; if (m.userData.env0 === undefined) m.userData.env0 = m.envMapIntensity; m.envMapIntensity = m.userData.env0 * (m.metalness > .5 ? .8 : roomEnv); });
+  PH.envDirty = true;
   PH.opens = []; PH.picks = []; REG = PH;
   const V = (v, k) => new THREE.Vector3(v[0] * k, -v[1] * k, -v[2] * k); // camera axes of the photo (y down, z forward) → three.js
   let base = null;
@@ -2071,7 +2110,7 @@ function buildPhotoScene(Wp, Hp) {
   REG = null;
   // shadow catchers: the floor under the furniture and the wall behind it, in the furniture's own frame
   const fg = new THREE.Group(); fg.position.copy(base.G.position); fg.quaternion.copy(base.G.quaternion); sc.add(fg);
-  const fl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .42 })); fl.userData.own = true; fl.rotation.x = -Math.PI / 2; fl.position.set(0, base.L.raised ? -2000 : 0, 0); fl.receiveShadow = true; fg.add(fl);
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .55 })); fl.userData.own = true; fl.rotation.x = -Math.PI / 2; fl.position.set(0, base.L.raised ? -2000 : 0, 0); fl.receiveShadow = true; fg.add(fl);
   const wl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .22 })); wl.userData.own = true; wl.position.set(0, 0, -2); wl.receiveShadow = true; fg.add(wl);
   fg.updateMatrixWorld(true);
   const bl = base.L; dl.position.copy(fg.localToWorld(new THREE.Vector3(bl.W / 2 - 1700, bl.H + 2600, bl.D + 2200))); dl.target.position.copy(fg.localToWorld(new THREE.Vector3(bl.W / 2, 0, bl.D / 2))); sc.add(dl.target);
@@ -2090,21 +2129,26 @@ function drawPhotoView(rebuild) {
     const sc = PH.scene, dl = sc.userData.dl, pos0 = sc.userData.dlPos, N = PH.frames = 6; // a few frames, the light moved a little each time: soft shadows in the photo too
     const under = document.createElement('canvas'); under.width = Wp; under.height = Hp; const ug = under.getContext('2d');
     thumbR(Wp, Hp); r.setClearColor(0x000000, 0); r.toneMappingExposure = sc.userData.exp || .85;
+    // exposure is calibrated once on a first frame: the furniture's lit faces are brought to the brightness of the wall
+    // right behind it in the photo (a render that is brighter than its own background is what reads as "pasted on")
+    if (sc.userData.calib === undefined) {
+      r.render(sc, PH.cam);
+      const pc = document.createElement('canvas'); pc.width = 64; pc.height = 64; const pg = pc.getContext('2d'); pg.drawImage(T.cv, 0, 0, 64, 64); const pd = pg.getImageData(0, 0, 64, 64).data;
+      let sum = 0, n = 0; for (let i = 0; i < pd.length; i += 4) if (pd[i + 3] > 200) { sum += .2126 * pd[i] + .7152 * pd[i + 1] + .0722 * pd[i + 2]; n++; }
+      const furn = n ? sum / n / 255 : .6, want = clamp(sc.userData.wall * 1.05, .15, .9);
+      sc.userData.calib = n > 50 ? clamp(want / Math.max(furn, .05), .4, 1.6) : 1;
+      r.toneMappingExposure = (sc.userData.exp || .85) * sc.userData.calib;
+    } else r.toneMappingExposure = (sc.userData.exp || .85) * sc.userData.calib;
     for (let i = 0; i < N; i++) {
       const a = 2 * Math.PI * halton(i, 2), rd = Math.sqrt(halton(i, 3)) * 900; dl.position.set(pos0.x + Math.cos(a) * rd, pos0.y + Math.sin(a) * rd * .4, pos0.z + Math.sin(a) * rd);
       dl.shadow.needsUpdate = true; r.render(sc, PH.cam); ug.globalAlpha = 1 / (i + 1); ug.drawImage(T.cv, 0, 0, Wp, Hp);
     }
-    r.toneMappingExposure = 1; g.drawImage(under, 0, 0);
+    r.toneMappingExposure = 1; if (PH.envDirty) { E.envK = null; PH.envDirty = false; }
+    // a render is too clean next to a phone photo: a touch of blur and of grain makes it sit in the picture
+    g.save(); g.filter = 'blur(.6px)'; g.drawImage(under, 0, 0); g.restore();
+    const gr = grainCanvas(); g.save(); g.globalAlpha = .07; g.globalCompositeOperation = 'overlay'; for (let y = 0; y < Hp; y += gr.height) for (let x = 0; x < Wp; x += gr.width) g.drawImage(gr, x, y); g.restore();
     S.keys2d = PH.opens.map((o) => o.userData.key); S.hits = [];
   } catch (err) { PH.ok = false; drawProjection(); }
-}
-document.querySelectorAll('#viewSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
-  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d';
-  if (S.view === '3d') {
-    init3D(); if (!E.ok) return renderView();
-    resize3D(); build3D(); if (!E.framed) { frame(); E.framed = true; } startLoop();
-  } else { stopLoop(); drawPhotoView(true); updateOpenBtn(); }
-  updateRealBtn();
 }
 document.querySelectorAll('#viewSeg button').forEach((b) => b.addEventListener('click', () => { S.view = b.dataset.view; renderView(); }));
 
@@ -2350,7 +2394,7 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(0);
-if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, setPhoto, zonePose, ACC, renderResult, generate };
+if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
   const id = new URLSearchParams(location.search).get('shot'); if (!id) return;

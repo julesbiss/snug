@@ -4,7 +4,8 @@
 
 export const config = { runtime: 'edge' };
 
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } });
+const fixEnc = (t) => { try { return /[\u00C2-\u00C5][\u0080-\u00BF]/.test(t) ? decodeURIComponent(escape(t)) : t; } catch { return t; } };
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
@@ -12,13 +13,13 @@ async function ikeaTry(q) {
   // two spellings of IKEA's search endpoint: the newer one with explicit parameters, then the bare one
   let d = null;
   for (const u of [`https://sik.search.blue.cdtapps.com/fr/fr/search-result-page?c=sr&v=20210322&types=PRODUCT&size=6&q=${encodeURIComponent(q)}`, `https://sik.search.blue.cdtapps.com/fr/fr/search-result-page?q=${encodeURIComponent(q)}&size=6`]) {
-    try { const r = await withTimeout(fetch(u, { headers: { 'user-agent': UA, accept: 'application/json', 'accept-language': 'fr-FR,fr;q=0.9' } }), 6000); if (r.ok) { d = await r.json(); if (d) break; } } catch { d = null; }
+    try { const r = await withTimeout(fetch(u, { headers: { 'user-agent': UA, accept: 'application/json', 'accept-language': 'fr-FR,fr;q=0.9' } }), 6000); if (r.ok) { d = JSON.parse(new TextDecoder('utf-8').decode(await r.arrayBuffer())); if (d) break; } } catch { d = null; }
   }
   if (!d) return null;
   const items = (d && d.searchResultPage && d.searchResultPage.products && d.searchResultPage.products.main && d.searchResultPage.products.main.items) || [];
   const p = (items.find((it) => it && it.product) || {}).product;
   if (!p) return null;
-  return { name: [p.name, p.typeName, p.itemMeasureReferenceText].filter(Boolean).join(' · '), price: p.salesPrice && p.salesPrice.numeral, image: p.mainImageUrl || p.contextualImageUrl || '', url: p.pipUrl || '', ref: p.itemNoGlobal || p.itemNo || p.id || '' };
+  return { name: fixEnc([p.name, p.typeName, p.itemMeasureReferenceText].filter(Boolean).join(' · ')), price: p.salesPrice && p.salesPrice.numeral, image: p.mainImageUrl || p.contextualImageUrl || '', url: p.pipUrl || '', ref: p.itemNoGlobal || p.itemNo || p.id || '' };
 }
 // IKEA: the exact wording first, then looser ones (sizes with spaces, then the range name alone)
 async function ikea(q) {

@@ -116,19 +116,28 @@ export default async function handler(req) {
     const out = (o) => o;
     const models = [...new Set([process.env.GEMINI_MODEL, ...FALLBACKS].filter(Boolean))];
     let res = null, detail = '', limited = false;
-    for (const model of models) {
-      try {
-        res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
-          method: 'POST', signal: req.signal,
-          headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-          body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
-        });
-      } catch { return out({ code: 'upstream_error', detail: 'network' }, 502); }
-      if (res.ok) break;
-      let msg = ''; try { const e = await res.json(); msg = (e.error && e.error.message) || ''; } catch {}
-      detail = `${model}: ${res.status} ${msg}`.slice(0, 300);
-      if (res.status === 429) { limited = true; continue; } // this model's free quota is used up: try the next one
-      if (res.status !== 404 && res.status !== 400) return out({ code: 'upstream_error', detail }, 502); // bad key etc.: trying other models won't help
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const call = (model) => fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', signal: req.signal,
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } }),
+    });
+    // Free tier: quotas are per minute and per model, and the servers answer "overloaded" now and then.
+    // Two passes over the models, a short pause between them, and one retry on a server hiccup.
+    outer: for (let pass = 0; pass < 2; pass++) {
+      if (pass) await sleep(2500);
+      for (const model of models) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try { res = await call(model); } catch { return out({ code: 'upstream_error', detail: 'network' }, 502); }
+          if (res.ok) break outer;
+          let msg = ''; try { const e = await res.json(); msg = (e.error && e.error.message) || ''; } catch {}
+          detail = `${model}: ${res.status} ${msg}`.slice(0, 300);
+          if (res.status === 429) { limited = true; break; } // this model's free quota is used up: try the next one
+          if (res.status === 503 || res.status === 500) { await sleep(1200); continue; } // overloaded: same model, once more
+          if (res.status !== 404 && res.status !== 400) return out({ code: 'upstream_error', detail }, 502); // bad key etc.: trying other models won't help
+          break;
+        }
+      }
     }
     if (!res || !res.ok) return out({ code: limited ? 'rate_limited' : 'upstream_error', detail }, 502);
     let data; try { data = await res.json(); } catch { return out({ code: 'upstream_error' }, 502); }
