@@ -716,7 +716,7 @@ function layoutModule(m, z) {
   const innerW = W - 2 * t - (cols.length - 1) * divT;
   const sumW = cols.reduce((s, c) => s + pos(c && c.largeur_mm, 1), 0);
   const y0 = legs + t, y1 = H - topT;
-  const cells = [], dividers = [], shelves = [], boxes = [];
+  const cells = [], dividers = [], shelves = [], boxes = [], vdivs = [];
   let x = t;
   cols.forEach((c, ci) => {
     const cw = innerW * pos(c && c.largeur_mm, 1) / sumW;
@@ -727,8 +727,15 @@ function layoutModule(m, z) {
     let y = y0;
     cases.forEach((k, ri) => {
       const ch = innerH * pos(k && k.hauteur_mm, 1) / sumH;
-      const type = TYPES.includes(k && k.type) ? k.type : 'ouvert';
-      cells.push({ x, y, w: cw, h: ch, type, contenu: (k && k.contenu) || '', rod: !!(k && k.tringle), key: `${ci}-${ri}`, col: ci, ncols: cols.length });
+      // a case can be divided in its width by one or two uprights: each compartment is then a case of its own
+      const parts = Array.isArray(k && k.parts) && k.parts.length > 1 ? k.parts : null, np = parts ? parts.length : 1;
+      const pw = (cw - (np - 1) * t) / np;
+      let px = x;
+      for (let pi = 0; pi < np; pi++) {
+        const o = parts ? parts[pi] : k, type = TYPES.includes(o && o.type) ? o.type : 'ouvert';
+        cells.push({ x: px, y, w: pw, h: ch, type, contenu: (o && o.contenu) || '', rod: !!(o && o.tringle), key: `${ci}-${ri}-${pi}`, col: ci, ncols: cols.length });
+        px += pw; if (pi < np - 1) { vdivs.push({ x: px, y, h: ch }); px += t; }
+      }
       y += ch; if (ri < cases.length - 1) { shelves.push({ x, w: cw, y }); y += t; }
     });
     x += cw; if (ci < cols.length - 1) { dividers.push(x); x += divT; }
@@ -739,7 +746,7 @@ function layoutModule(m, z) {
     if (d.type === 'fixation_murale') return { type: d.type };
     return null;
   }).filter(Boolean);
-  return { W, H, D, t, divT, legs, topT, y0, y1, cells, dividers, shelves, caissons, boxes, details, raised: num(z.D) > 0 };
+  return { W, H, D, t, divT, legs, topT, y0, y1, cells, dividers, shelves, vdivs, caissons, boxes, details, raised: num(z.D) > 0 };
 }
 function legXs(L) { const n = Math.max(2, Math.round(L.W / 800) + 1); return Array.from({ length: n }, (_, k) => 20 + (L.W - 90) * k / (n - 1)); }
 function frontsOf(L, mi) {
@@ -1068,8 +1075,12 @@ function cellCtx(ref) {
   const p = currentProp(); if (!p || !ref) return null;
   const m = p.modules[ref.mi]; const col = m && m.colonnes && m.colonnes[ref.ci]; const k = col && col.cases && col.cases[ref.ri];
   if (!k) return null;
-  const L = layoutModule(m, zoneFor(m, ref.mi)); const c = L.cells.find((x) => x.key === `${ref.ci}-${ref.ri}`);
-  return c ? { p, m, col, k, L, c } : null;
+  const pi = ref.pi || 0, parts = Array.isArray(k.parts) && k.parts.length > 1 ? k.parts : null;
+  const o = parts ? (parts[pi] || parts[0]) : k; // the compartment the user touched: the case itself, or one of its parts
+  const L = layoutModule(m, zoneFor(m, ref.mi)); const c = L.cells.find((x) => x.key === `${ref.ci}-${ref.ri}-${pi}`) || L.cells.find((x) => x.key.startsWith(`${ref.ci}-${ref.ri}-`));
+  const own = L.cells.filter((x) => x.col === ref.ci);
+  const colW = own.length ? Math.max(...own.map((x) => x.x + x.w)) - Math.min(...own.map((x) => x.x)) : c.w;
+  return c ? { p, m, col, k, o, parts, np: parts ? parts.length : 1, colW, L, c } : null;
 }
 function cellRules(L, c) {
   const w = c.w, h = c.h, D = L.D, mm = (v) => `${R0(v).toLocaleString('fr-FR')} mm`;
@@ -1100,38 +1111,39 @@ function renderCell() {
   const where = n === 1 ? 'seule case' : X.k === col.cases[0] ? 'en bas' : X.k === col.cases[n - 1] ? 'en haut' : `case ${S.selCell.ri + 1} sur ${n}`;
   const btn = (id, label, extra = '') => `<button type="button" class="cbtn${extra}" data-op="${id}">${label}</button>`;
   const ri = S.selCell.ri, ci = S.selCell.ci, nc = X.m.colonnes.length;
-  el.innerHTML = `<div class="chead"><div><b>Colonne ${ci + 1} · ${where}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${k.contenu ? ' · ' + String(k.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
+  el.innerHTML = `<div class="chead"><div><b>Colonne ${ci + 1} · ${where}${X.np > 1 ? ` · partie ${(S.selCell.pi || 0) + 1} sur ${X.np}` : ''}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${X.o.contenu ? ' · ' + String(X.o.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
     <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>
     <p class="clab">Façade</p>
-    <div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${k.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
-    <p class="clab">Intérieur</p>
-    <div class="cgrid">${btn('split', '+ Étagère', rules.split ? ' no' : '')}<button type="button" class="cbtn${rules.tringle && !k.tringle ? ' no' : ''}" data-op="tringle" aria-pressed="${!!k.tringle}">${k.tringle ? '✓ Penderie' : 'Penderie'}</button>
-      ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}</div>
+    <div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${X.o.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
+    <p class="clab">Cette case</p>
+    <div class="cgrid">${btn('split', '+ Étagère', rules.split ? ' no' : '')}<button type="button" class="cbtn${rules.tringle && !X.o.tringle ? ' no' : ''}" data-op="tringle" aria-pressed="${!!X.o.tringle}">${X.o.tringle ? '✓ Penderie' : 'Penderie'}</button>
+      ${btn('splitH', 'Diviser en largeur', c.w >= 320 && X.np < 3 ? '' : ' no')}${btn('mergeH', 'Réunir en largeur', X.np > 1 ? '' : ' no')}
+      ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}
+      ${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}</div>
     <p class="clab">Hauteur de la case</p>
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
-    <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(c.w).toLocaleString('fr-FR')} mm</p>
-    <div class="cgrid">${btn('colSplit', 'Couper en deux', c.w >= 380 ? '' : ' no')}${btn('colMerge', 'Réunir', nc > 1 ? '' : ' no')}</div>
-    <p class="clab">Déplacer</p>
-    <div class="cgrid">${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}${btn('left', '← Colonne', ci > 0 ? '' : ' no')}${btn('right', 'Colonne →', ci < nc - 1 ? '' : ' no')}</div>`;
+    <p class="clab">Toute la colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
+    <div class="cgrid">${btn('colSplit', 'Couper en deux colonnes', X.colW >= 380 ? '' : ' no')}${btn('colMerge', 'Réunir deux colonnes', nc > 1 ? '' : ' no')}
+      ${btn('left', '⇄ Avec la colonne ←', ci > 0 ? '' : ' no')}${btn('right', '⇄ Avec la colonne →', ci < nc - 1 ? '' : ' no')}</div>`;
   el.hidden = false;
   $('#cellClose').onclick = closeCell;
   el.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => cellOp(b.dataset.op); });
 }
 /* The plan stores heights and widths as proportions. Before changing one by a number of millimetres, the column
    (or the row of columns) is rewritten with its real sizes, so the step the user asks for is the step they get. */
-function realHeights(X) { const cells = X.L.cells.filter((c) => c.col === S.selCell.ci); X.col.cases.forEach((k, i) => { if (cells[i]) k.hauteur_mm = R0(cells[i].h); }); }
-function realWidths(X, L) { X.m.colonnes.forEach((c, i) => { const cell = L.cells.find((x) => x.col === i); if (cell) c.largeur_mm = R0(cell.w); }); }
+function realHeights(X) { X.col.cases.forEach((k, i) => { const c = X.L.cells.find((x) => x.key === `${S.selCell.ci}-${i}-0`); if (c) k.hauteur_mm = R0(c.h); }); }
+function realWidths(X, L) { X.m.colonnes.forEach((c, i) => { const cells = L.cells.filter((x) => x.col === i && x.key.endsWith('-0')); const w = cells.length ? Math.max(...L.cells.filter((x) => x.col === i).map((x) => x.x + x.w)) - Math.min(...L.cells.filter((x) => x.col === i).map((x) => x.x)) : 0; if (w) c.largeur_mm = R0(w); }); }
 function cellOp(op) {
-  const X = cellCtx(S.selCell); if (!X) return; const { col, k, L, c } = X, rules = cellRules(L, c), ref = S.selCell, cs = col.cases, T = 18;
+  const X = cellCtx(S.selCell); if (!X) return; const { col, k, o, parts, np, L, c } = X, rules = cellRules(L, c), ref = S.selCell, cs = col.cases, T = 18;
   const say = (m) => { S.cellMsg = m; renderCell(); };
   const n0 = cs.length, nc0 = X.m.colonnes.length;
   if ((op === 'mergeUp' || op === 'up') && ref.ri >= n0 - 1) return say('Cette case est déjà tout en haut de sa colonne.');
   if ((op === 'mergeDown' || op === 'down') && ref.ri <= 0) return say('Cette case est déjà tout en bas de sa colonne.');
   if (op === 'left' && ref.ci <= 0) return say('Cette colonne est déjà la première à gauche.');
   if (op === 'right' && ref.ci >= nc0 - 1) return say('Cette colonne est déjà la dernière à droite.');
-  if (op.startsWith('type:')) { const t = op.slice(5); if (rules[t]) return say(rules[t]); k.type = t; if (t !== 'ouvert' && k.contenu === 'rangement') k.contenu = ''; }
-  else if (op === 'tringle') { if (!k.tringle && rules.tringle) return say(rules.tringle); k.tringle = !k.tringle; if (k.tringle && !k.contenu) k.contenu = 'penderie'; }
-  else if (op === 'split') { if (rules.split) return say(rules.split); const h = (num(k.hauteur_mm) - T) / 2; cs.splice(ref.ri, 1, { ...k, hauteur_mm: h, tringle: false }, { hauteur_mm: h, type: 'ouvert', contenu: '' }); }
+  if (op.startsWith('type:')) { const t = op.slice(5); if (rules[t]) return say(rules[t]); o.type = t; if (t !== 'ouvert' && o.contenu === 'rangement') o.contenu = ''; }
+  else if (op === 'tringle') { if (!o.tringle && rules.tringle) return say(rules.tringle); o.tringle = !o.tringle; if (o.tringle && !o.contenu) o.contenu = 'penderie'; }
+  else if (op === 'split') { if (rules.split) return say(rules.split); const h = (num(k.hauteur_mm) - T) / 2; const copy = { ...k, hauteur_mm: h, tringle: false }; if (k.parts) copy.parts = k.parts.map((x) => ({ ...x })); cs.splice(ref.ri, 1, copy, { hauteur_mm: h, type: 'ouvert', contenu: '' }); }
   else if (op === 'mergeUp' || op === 'mergeDown') {
     const j = op === 'mergeUp' ? ref.ri + 1 : ref.ri - 1, o = cs[j]; if (!o) return;
     const merged = { ...k, hauteur_mm: num(k.hauteur_mm) + num(o.hauteur_mm) + T, tringle: !!(k.tringle || o.tringle) };
@@ -1146,10 +1158,20 @@ function cellOp(op) {
     if (mine + d < 80) return say('Cette case ne peut pas être plus basse que 80 mm.');
     if (other - d < 80) return say(`La case ${up ? 'du dessus' : 'du dessous'} ne peut pas être plus basse que 80 mm.`);
     cs[ref.ri].hauteur_mm = mine + d; cs[j].hauteur_mm = other - d;
+  } else if (op === 'splitH') {
+    if (np >= 3) return say('Une case se divise en deux ou trois, pas plus.');
+    if (c.w < 320) return say(`Case trop étroite pour être divisée : ${R0(c.w)} mm, il en faut 320.`);
+    const list = parts ? parts.slice() : [{ type: k.type, contenu: k.contenu, tringle: !!k.tringle }];
+    list.splice(ref.pi + 1 || 1, 0, { type: 'ouvert', contenu: '' });
+    k.parts = list; delete k.tringle;
+  } else if (op === 'mergeH') {
+    if (!parts) return say('Cette case n’est pas divisée.');
+    const keep = parts[ref.pi] || parts[0];
+    k.type = keep.type; k.contenu = keep.contenu; k.tringle = !!keep.tringle; delete k.parts; ref.pi = 0;
   } else if (op === 'colSplit') {
     const cols = X.m.colonnes; realWidths(X, L);
     const w = num(cols[ref.ci].largeur_mm), half = (w - L.divT) / 2;
-    if (half < 180) return say(`Colonne trop étroite pour être coupée en deux : ${R0(w)} mm, il en faut 380.`);
+    if (half < 180) return say(`Colonne trop étroite pour être coupée en deux : ${R0(X.colW)} mm, il en faut 380.`);
     const H = cs.reduce((a, k) => a + num(k.hauteur_mm), 0) + (cs.length - 1) * T;
     cols[ref.ci].largeur_mm = half;
     cols.splice(ref.ci + 1, 0, { largeur_mm: half, cases: [{ hauteur_mm: H, type: 'ouvert', contenu: '' }] });
@@ -1162,7 +1184,7 @@ function cellOp(op) {
     cols.splice(j, 1); if (j < ref.ci) ref.ci = j; ref.ri = clamp(ref.ri, 0, cols[ref.ci].cases.length - 1);
   }
   X.p.edited = true; E.state = {}; S.cellMsg = '';
-  [0, 1].forEach((kk) => { getSt(`${S.active}:${ref.mi}:${ref.ci}-${ref.ri}:${kk}`).target = 1; }); // the case just changed opens, so the new door or drawer is seen working
+  [0, 1].forEach((kk) => { getSt(`${S.active}:${ref.mi}:${ref.ci}-${ref.ri}-${ref.pi || 0}:${kk}`).target = 1; }); // the case just changed opens, so the new door or drawer is seen working
   try { localStorage.setItem('snug.edited', '1'); } catch {}
   refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
   renderWarn(X.p);
@@ -1224,13 +1246,14 @@ function noticeFor(p, cu) {
     const legsOn = L.legs > 0 && !L.raised, hidden = legsOn && feet.hidden;
     const legBoxes = legsOn && !hidden ? legXs(L).flatMap((x) => [[x, 0, 40, 50, L.legs, 50], [x, 0, D - 90, 50, L.legs, 50]]) : [];
     const nLegs = legsOn ? legXs(L).length * 2 : 0;
-    let fond = null, cg = null, cd = null; const divs = [], shel = [], cais = [];
+    let fond = null, cg = null, cd = null; const divs = [], shel = [], cais = [], vdv = [];
     if (!L.caissons) {
       fond = P('Fond', mmTxt(W, D - 6, t), [0, L.legs, 6, W, t, D - 6], 'struct');
       cg = P('Côté gauche', mmTxt(L.y1 - L.y0, D - 6, t), [0, L.y0, 6, t, L.y1 - L.y0, D - 6], 'struct');
       cd = P('Côté droit', mmTxt(L.y1 - L.y0, D - 6, t), [W - t, L.y0, 6, t, L.y1 - L.y0, D - 6], 'struct');
       L.dividers.forEach((x, i) => divs.push(P(`Séparation ${i + 1}`, mmTxt(L.y1 - L.y0, D - 6, t), [x, L.y0, 6, L.divT, L.y1 - L.y0, D - 6], 'struct', { xpos: x })));
       L.shelves.forEach((s, i) => shel.push(P(`Étagère ${i + 1}`, mmTxt(s.w, D - 26, t), [s.x, s.y, 6, s.w, t, D - 26], 'struct', { s })));
+      // uprights that divide a single case in its width
     } else {
       L.boxes.forEach((b, i) => cais.push(P(b.ref || `Caisson ${i + 1}`, mmTxt(b.x1 - b.x0, L.y1 - L.legs, D - 6), [b.x0, L.legs, 6, b.x1 - b.x0, L.y1 - L.legs, D - 6], 'caisson', { ref: b.ref })));
     }
@@ -1297,6 +1320,15 @@ function noticeFor(p, cu) {
           markers: legXs(L).flatMap((x) => [[x + 25, L.legs, 65], [x + 25, L.legs, D - 65]]).map((p_) => ({ p: p_, c: hidden ? 'W' : 'I' })),
           text: ['Couchez l’ensemble des caissons sur le dos, sur une couverture.', hidden ? `Vissez ${q} vérins W sous les caissons à 40 mm des bords, 4 vis B chacun.` : `Vissez ${q} pieds « ${feet.nom.toLowerCase()} » sous les caissons à 20 mm des bords, 4 vis B chacun.`, 'Relevez le meuble.'] });
       }
+    }
+    (L.vdivs || []).forEach((v, i) => vdv.push(P(`Séparation verticale ${i + 1}`, mmTxt(v.h, D - 26, t), [v.x, v.y, 6, t, v.h, D - 26], 'struct', { v })));
+    if (vdv.length) { // an upright that divides one case in its width
+      H('A', vdv.length * 4);
+      st({ title: 'Poser les séparations verticales', add: vdv, explode: [0, 0, 260], hw: [['A', vdv.length * 4]], tools: ['Foret bois 3 mm'], extra: legExtra(false),
+        markers: vdv.flatMap((o) => [[o.v.y + 20, 1], [o.v.y + o.v.h - 20, -1]].flatMap(([yy, sy]) => [60, D - 86].map((zz) => ({ p: [o.v.x + t / 2, yy, zz], c: 'A', d: [0, sy, 0] })))),
+        text: [`Ces séparations divisent une case dans sa largeur : ${vdv.map((o) => `${o.code} à ${R0(o.v.x)} mm du bord gauche, sur ${R0(o.v.h)} mm de haut`).join(', ')}.`,
+          'Pré-percez 2 trous en haut et 2 en bas de chaque séparation, à 60 mm de l’avant et de l’arrière.',
+          `Vissez chacune avec 4 vis A${L.caissons ? ', dans le fond et sous l’étagère du caisson' : ', dans l’étagère du dessous et celle du dessus'}.`] });
     }
     const verts = L.caissons ? L.boxes.map((b) => b.x0 + t / 2).concat([W - t / 2]) : [t / 2, W - t / 2].concat(L.dividers.map((x) => x + L.divT / 2));
     const nE = verts.length * 2; H('E', nE); H('B', nE * 4);
@@ -2033,13 +2065,14 @@ function buildModule(G, L, mi, M, feet) {
     const bt = new THREE.Mesh(new THREE.PlaneGeometry(c.w, D - 10), aoM); bt.rotation.x = -Math.PI / 2; bt.position.set(c.x + c.w / 2, c.y + .8, (D + 6) / 2); G.add(bt);
   });
   // invisible touch targets, one per case, to open the edit menu
+  (L.vdivs || []).forEach((v) => bx(L.t, v.h, D - 26, M.mS, v.x, v.y, 6, G));
   L.cells.forEach((c) => {
-    const [ci, ri] = c.key.split('-').map(Number);
+    const [ci, ri, pi] = c.key.split('-').map(Number);
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(c.w, c.h), new THREE.MeshBasicMaterial()); pl.visible = false;
-    pl.position.set(c.x + c.w / 2, c.y + c.h / 2, D + 24); pl.userData.cell = { mi, ci, ri }; G.add(pl); E.cellPicks.push(pl);
+    pl.position.set(c.x + c.w / 2, c.y + c.h / 2, D + 24); pl.userData.cell = { mi, ci, ri, pi }; G.add(pl); E.cellPicks.push(pl);
     pl.userData.cw = c.w; pl.userData.ch = c.h;
     const sc = S.selCell;
-    if (sc && sc.mi === mi && sc.ci === ci && sc.ri === ri) {
+    if (sc && sc.mi === mi && sc.ci === ci && sc.ri === ri && (sc.pi || 0) === pi) {
       const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.w + 6, c.h + 6, D + 30)), new THREE.LineBasicMaterial({ color: 0xB9782A, toneMapped: false }));
       box.position.set(c.x + c.w / 2, c.y + c.h / 2, (D + 30) / 2 + 2); G.add(box);
     }
@@ -2243,7 +2276,7 @@ function buildSpots() {
 function placeSpots(force) {
   if (!SPOT.items.length || !E.cam) return;
   const cv = $('#cv3d'), W = cv.clientWidth, H = cv.clientHeight;
-  const key = E.camKey + '|' + W + '|' + H + '|' + (S.selCell ? S.selCell.ci + '-' + S.selCell.ri : '');
+  const key = E.camKey + '|' + W + '|' + H + '|' + (S.selCell ? S.selCell.ci + '-' + S.selCell.ri + '-' + (S.selCell.pi || 0) : '');
   if (!force && key === SPOT.key) return; SPOT.key = key;
   const v = new THREE.Vector3(), n = new THREE.Vector3(), d = new THREE.Vector3();
   SPOT.items.forEach(({ b, pl, cell }) => {
@@ -2257,7 +2290,7 @@ function placeSpots(force) {
     if (!on) return;
     b.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) translate(-50%, -50%)`;
     b.style.opacity = String(clamp(.5 + facing * .6, .62, 1));
-    const sel = S.selCell && S.selCell.mi === cell.mi && S.selCell.ci === cell.ci && S.selCell.ri === cell.ri;
+    const sel = S.selCell && S.selCell.mi === cell.mi && S.selCell.ci === cell.ci && S.selCell.ri === cell.ri && (S.selCell.pi || 0) === (cell.pi || 0);
     b.classList.toggle('on', !!sel);
   });
 }
