@@ -60,16 +60,20 @@ L'appli le signale à l'utilisateur avant l'analyse d'une photo.
 
 ### Activer le rendu réaliste (gratuit)
 
-Sans clés Cloudflare, le bouton « Réaliste » essaie d'abord la clé Gemini déjà configurée (modèles d'image de Google). Si l'offre gratuite de Google ne l'autorise pas pour cette clé, l'appli le dit et renvoie aux étapes ci-dessous.
+Bouton « Réaliste » dans la vue « Chez moi » : une IA de retouche efface l'ancien meuble et intègre le nouveau dans la photo.
+Sans clés Cloudflare, l'appli essaie la clé Gemini déjà configurée ; l'offre gratuite de Google ne comprend pas toujours la
+retouche d'image, auquel cas l'appli le dit et renvoie ici. Quota gratuit Cloudflare : 10 000 « neurons » par jour, environ 60 rendus.
 
-
-Bouton « Réaliste » dans la vue « Chez moi » : une IA de retouche remplace l'ancien meuble par le nouveau dans la photo.
-Quota gratuit Cloudflare : 10 000 « neurons » par jour, soit environ 60 rendus.
-
-1. Créez un compte gratuit sur dash.cloudflare.com.
-2. Notez l'**Account ID** (page d'accueil du compte, ou Workers & Pages, colonne de droite).
-3. Profil (en haut à droite) → API Tokens → Create Token → modèle « Workers AI » → Create → copiez le jeton.
-4. Sur Vercel : `CF_ACCOUNT_ID` et `CF_API_TOKEN` (type Secret), puis Redeploy.
+1. Créez un compte gratuit sur [dash.cloudflare.com](https://dash.cloudflare.com) (aucune carte bancaire).
+2. Dans le menu de gauche, ouvrez **AI** → **Workers AI**, puis le bouton **Use REST API**.
+3. Copiez l'**Account ID** affiché sur cette page.
+4. Sur la même page, **Create a Workers AI API Token** → **Create API Token** → **Copy API Token**.
+   (En jeton personnalisé : permissions **Workers AI - Read** et **Workers AI - Edit**.)
+5. Sur Vercel, projet `snug` → **Settings** → **Environment Variables** → **Add New**, deux fois :
+   `CF_ACCOUNT_ID` = l'Account ID, puis `CF_API_TOKEN` = le jeton, les deux en type **Secret**, pour tous les environnements.
+6. Onglet **Deployments** → menu « … » du dernier déploiement → **Redeploy**.
+7. Vérification : ouvrez `https://<votre-app>.vercel.app/api/render` dans un navigateur.
+   La réponse doit indiquer `"service":"cloudflare"` et les deux clés à `true`.
 
 ## Installer sur un téléphone
 

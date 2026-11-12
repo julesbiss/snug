@@ -31,6 +31,10 @@ function prompt(hint) {
 }
 
 export default async function handler(req) {
+  if (req.method === 'GET') { // quick check from a phone: /api/render tells whether the realistic render is set up
+    const a = process.env.CF_ACCOUNT_ID, t = process.env.CF_API_TOKEN, g = process.env.GEMINI_API_KEY;
+    return json({ pret: !!(a && t) || !!g, service: a && t ? 'cloudflare' : g ? 'gemini' : 'aucun', cles: { CF_ACCOUNT_ID: !!a, CF_API_TOKEN: !!t, GEMINI_API_KEY: !!g } });
+  }
   if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   const account = process.env.CF_ACCOUNT_ID, token = process.env.CF_API_TOKEN, gkey = process.env.GEMINI_API_KEY;
   let body; try { body = await req.json(); } catch { return json({ code: 'invalid_request' }, 400); }
