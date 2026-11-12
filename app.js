@@ -671,7 +671,7 @@ function newProject() {
 }
 // a brand-new project: nothing kept from the previous one (photo, zones, objects)
 function startNew(type) {
-  S.f35 = 0; S.zones = []; S.sel = 0; S.zonesTouched = false; S.itemsBy = {}; S.customBy = {}; S.aiNotes = []; S.genZones = null; S.active = -1; S.custom = [null, null, null]; E.state = {}; E.framed = false;
+  S.f35 = 0; S.adj = { x: 0, y: 0, s: 1 }; S.zones = []; S.sel = 0; S.zonesTouched = false; S.itemsBy = {}; S.customBy = {}; S.aiNotes = []; S.genZones = null; S.active = -1; S.custom = [null, null, null]; E.state = {}; E.framed = false;
   if (type) S.project = type;
   renderAiNotes(); renderOptions(); setPhoto(examplePhoto(), true); newProject();
 }
@@ -949,13 +949,16 @@ function productShot() {
   return out;
 }
 const PROJ_EN = { tv: 'a low TV cabinet', dressing: 'a wardrobe', biblio: 'a bookcase', escalier: 'an under-stairs storage unit', bureau: 'a desk with drawers', autre: 'a storage unit' };
+$('#realClose').onclick = () => { $('#realWait').hidden = true; };
+$('#adjReset').onclick = adjReset;
 async function makeReal() {
   const key = realKey();
   if (S.real[key]) { S.realOn = !S.realOn; updateRealBtn(); return; }
   const wait = $('#realWait'), btn = $('#realBtn'); if (!wait.hidden) return;
-  const SETUP = 'Le rendu réaliste efface l’ancien meuble et intègre le nouveau dans votre photo. Il lui faut un service d’images gratuit : Cloudflare (2 clés à ajouter dans Vercel, voir le README du projet).';
-  if (!S.render) { wait.hidden = false; $('#realMsg').textContent = SETUP; setTimeout(() => { wait.hidden = true; }, 9000); return; }
-  wait.hidden = false; $('#realMsg').textContent = 'Création du rendu réaliste… environ 20 secondes';
+  const SETUP = 'Le rendu réaliste efface l’ancien meuble et intègre le nouveau dans votre photo. Il lui faut un service d’images gratuit : Cloudflare, 2 clés à ajouter dans Vercel (étapes dans le README du projet).';
+  const msg = (t) => { wait.hidden = false; $('#realShim').hidden = true; $('#realClose').hidden = false; $('#realMsg').textContent = t; };
+  if (!S.render) return msg(SETUP);
+  wait.hidden = false; $('#realShim').hidden = false; $('#realClose').hidden = true; $('#realMsg').textContent = 'Création du rendu réaliste… environ 20 secondes';
   try {
     const product = productShot(); drawPhotoView(true);
     if (!product || !S.photo) throw { code: 'upstream_error' };
@@ -969,8 +972,7 @@ async function makeReal() {
     if (!d || !d.ok) throw { code: (d && d.code) || 'upstream_error', detail: d && d.detail };
     S.real[key] = `data:${d.mime || 'image/png'};base64,` + d.image; S.realOn = true; wait.hidden = true; updateRealBtn();
   } catch (e) {
-    $('#realMsg').textContent = e && e.code === 'not_included' ? 'L’offre gratuite de Google ne comprend pas la retouche d’image pour votre clé. ' + SETUP : (e && e.code === 'rate_limited' ? 'Le quota gratuit est atteint pour le moment. Réessayez plus tard.' : 'Le rendu réaliste n’a pas pu être créé. Réessayez dans un moment.') + (e && e.detail ? ` (${String(e.detail).slice(0, 120)})` : '');
-    setTimeout(() => { wait.hidden = true; }, 9000);
+    msg(e && e.code === 'not_included' ? 'L’offre gratuite de Google ne comprend pas la retouche d’image pour votre clé. ' + SETUP : (e && e.code === 'rate_limited' ? 'Le quota gratuit est atteint pour le moment. Réessayez plus tard.' : 'Le rendu réaliste n’a pas pu être créé. Réessayez dans un moment.'));
   }
   btn.blur();
 }
@@ -1105,12 +1107,20 @@ function renderCell() {
     <p class="clab">Intérieur</p>
     <div class="cgrid">${btn('split', '+ Étagère', rules.split ? ' no' : '')}<button type="button" class="cbtn${rules.tringle && !k.tringle ? ' no' : ''}" data-op="tringle" aria-pressed="${!!k.tringle}">${k.tringle ? '✓ Penderie' : 'Penderie'}</button>
       ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}</div>
+    <p class="clab">Hauteur de la case</p>
+    <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
+    <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(c.w).toLocaleString('fr-FR')} mm</p>
+    <div class="cgrid">${btn('colSplit', 'Couper en deux', c.w >= 380 ? '' : ' no')}${btn('colMerge', 'Réunir', nc > 1 ? '' : ' no')}</div>
     <p class="clab">Déplacer</p>
     <div class="cgrid">${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}${btn('left', '← Colonne', ci > 0 ? '' : ' no')}${btn('right', 'Colonne →', ci < nc - 1 ? '' : ' no')}</div>`;
   el.hidden = false;
   $('#cellClose').onclick = closeCell;
   el.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => cellOp(b.dataset.op); });
 }
+/* The plan stores heights and widths as proportions. Before changing one by a number of millimetres, the column
+   (or the row of columns) is rewritten with its real sizes, so the step the user asks for is the step they get. */
+function realHeights(X) { const cells = X.L.cells.filter((c) => c.col === S.selCell.ci); X.col.cases.forEach((k, i) => { if (cells[i]) k.hauteur_mm = R0(cells[i].h); }); }
+function realWidths(X, L) { X.m.colonnes.forEach((c, i) => { const cell = L.cells.find((x) => x.col === i); if (cell) c.largeur_mm = R0(cell.w); }); }
 function cellOp(op) {
   const X = cellCtx(S.selCell); if (!X) return; const { col, k, L, c } = X, rules = cellRules(L, c), ref = S.selCell, cs = col.cases, T = 18;
   const say = (m) => { S.cellMsg = m; renderCell(); };
@@ -1128,8 +1138,32 @@ function cellOp(op) {
     cs.splice(Math.min(ref.ri, j), 2, merged); ref.ri = Math.min(ref.ri, j);
   } else if (op === 'up' || op === 'down') { const j = op === 'up' ? ref.ri + 1 : ref.ri - 1; [cs[ref.ri], cs[j]] = [cs[j], cs[ref.ri]]; ref.ri = j; }
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
+  else if (op === 'taller' || op === 'shorter') {
+    // move the shelf that separates this case from the one above (or below, for the top case) by 20 mm
+    const d = (op === 'taller' ? 1 : -1) * 20, up = ref.ri < n0 - 1, j = up ? ref.ri + 1 : ref.ri - 1;
+    if (j < 0 || j >= n0) return say('Cette colonne n’a qu’une case : ajoutez d’abord une étagère.');
+    realHeights(X); const mine = num(cs[ref.ri].hauteur_mm), other = num(cs[j].hauteur_mm);
+    if (mine + d < 80) return say('Cette case ne peut pas être plus basse que 80 mm.');
+    if (other - d < 80) return say(`La case ${up ? 'du dessus' : 'du dessous'} ne peut pas être plus basse que 80 mm.`);
+    cs[ref.ri].hauteur_mm = mine + d; cs[j].hauteur_mm = other - d;
+  } else if (op === 'colSplit') {
+    const cols = X.m.colonnes; realWidths(X, L);
+    const w = num(cols[ref.ci].largeur_mm), half = (w - L.divT) / 2;
+    if (half < 180) return say(`Colonne trop étroite pour être coupée en deux : ${R0(w)} mm, il en faut 380.`);
+    const H = cs.reduce((a, k) => a + num(k.hauteur_mm), 0) + (cs.length - 1) * T;
+    cols[ref.ci].largeur_mm = half;
+    cols.splice(ref.ci + 1, 0, { largeur_mm: half, cases: [{ hauteur_mm: H, type: 'ouvert', contenu: '' }] });
+    ref.ri = 0;
+  } else if (op === 'colMerge') {
+    const cols = X.m.colonnes; if (cols.length < 2) return say('Il n’y a qu’une seule colonne.');
+    realWidths(X, L);
+    const j = ref.ci < cols.length - 1 ? ref.ci + 1 : ref.ci - 1;
+    cols[ref.ci].largeur_mm = num(cols[ref.ci].largeur_mm) + num(cols[j].largeur_mm) + L.divT;
+    cols.splice(j, 1); if (j < ref.ci) ref.ci = j; ref.ri = clamp(ref.ri, 0, cols[ref.ci].cases.length - 1);
+  }
   X.p.edited = true; E.state = {}; S.cellMsg = '';
-  [0, 1].forEach((kk) => { getSt(`${S.active}:${ref.mi}:${ref.ci}-${ref.ri}:${kk}`).target = 1; }); // the case just changed opens, so the new door or drawer is seen working try { localStorage.setItem('snug.edited', '1'); } catch {}
+  [0, 1].forEach((kk) => { getSt(`${S.active}:${ref.mi}:${ref.ci}-${ref.ri}:${kk}`).target = 1; }); // the case just changed opens, so the new door or drawer is seen working
+  try { localStorage.setItem('snug.edited', '1'); } catch {}
   refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
   renderWarn(X.p);
 }
@@ -1769,9 +1803,37 @@ function drawProjection() {
   });
   S.hits = hits; S.keys2d = keys;
 }
+/* The furniture can be pushed into place with a finger and resized with two: four corners placed by hand never
+   give a perfect perspective, so the last word belongs to the eye. The correction is kept with the project. */
+function adjReset() { S.adj = { x: 0, y: 0, s: 1 }; $('#adjReset').classList.remove('on'); drawPhotoView(true); }
+function adjShow() { const a = S.adj || (S.adj = { x: 0, y: 0, s: 1 }); $('#adjReset').classList.toggle('on', !!(a.x || a.y || a.s !== 1)); }
 (function () {
-  const cv = $('#cv3'); let down = null;
-  cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+  const cv = $('#cv3'); let down = null, drag = null, pinch = null;
+  const pts = new Map();
+  const mmPerPx = () => { const z = (S.genZones || S.zones)[0] || DEFZ, r = cv.getBoundingClientRect(); return (pos(z.A) || 1000) / Math.max(60, (z.w || .6) * r.width); };
+  cv.addEventListener('pointerdown', (e) => {
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: (S.adj || {}).s || 1 }; drag = null; return; }
+    down = { x: e.clientX, y: e.clientY }; drag = { x: e.clientX, y: e.clientY, moved: false, a0: { ...(S.adj || { x: 0, y: 0, s: 1 }) } };
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove', (e) => {
+    const p = pts.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
+    const a = S.adj || (S.adj = { x: 0, y: 0, s: 1 });
+    if (pinch && pts.size === 2) { const [u, v] = [...pts.values()]; a.s = clamp(pinch.s0 * (Math.hypot(u.x - v.x, u.y - v.y) / pinch.d), .35, 3); PH.fast = true; drawPhotoView(true); return; }
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 7) return;
+    drag.moved = true; down = null; const k = mmPerPx();
+    a.x = drag.a0.x + dx * k; a.y = drag.a0.y + dy * k; PH.fast = true; drawPhotoView(true);
+  });
+  const end = (e) => {
+    pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
+    if (drag && drag.moved) { drag = null; PH.fast = false; adjShow(); drawPhotoView(true); return; }
+    drag = null; if (pts.size === 0 && PH.fast) { PH.fast = false; adjShow(); drawPhotoView(true); }
+  };
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerup', (e) => { end(e); });
   cv.addEventListener('pointerup', (e) => {
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) { down = null; return; } down = null;
     const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * cv.width / r.width, y = (e.clientY - r.top) * cv.height / r.height;
@@ -2206,7 +2268,7 @@ function renderView() {
   if (!E.ok) S.view = 'photo';
   $('#viewSeg').hidden = !E.ok;
   document.querySelectorAll('#viewSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
-  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d'; $('#hint3d').hidden = S.view !== '3d';
+  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d'; $('#hint3d').hidden = S.view !== '3d'; $('#adjHint').hidden = S.view !== 'photo'; if (S.view === 'photo') adjShow();
   if (S.view === '3d') {
     init3D(); if (!E.ok) return renderView();
     resize3D(); build3D();
@@ -2260,7 +2322,9 @@ function buildPhotoScene(Wp, Hp) {
     const z = zs[mi], L = layoutModule(m, z), P = zonePose(z, Wp, Hp, f), A = pos(z.A) || L.W, B = pos(z.B) || A * P.ratio;
     const ex = V(P.r1, 1), ey = V(P.r2, -1), ez = V(P.r3, -1);
     const G = new THREE.Group(); G.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex, ey, ez));
-    G.position.copy(V(P.o, A)).addScaledVector(ey, -B).addScaledVector(ex, (A - L.W) / 2); sc.add(G);
+    const adj = S.adj || (S.adj = { x: 0, y: 0, s: 1 }); // the hand correction: a drawn rectangle is never exact
+    G.position.copy(V(P.o, A)).addScaledVector(ey, -B).addScaledVector(ex, (A - L.W) / 2 + adj.x).addScaledVector(ey, -adj.y);
+    G.scale.setScalar(adj.s); sc.add(G);
     buildModule(G, L, mi, M, feet);
     if (!base || (base.L.raised && !L.raised)) base = { G, L };
   });
@@ -2283,7 +2347,7 @@ function drawPhotoView(rebuild) {
     const g = drawPhoto(cv), Wp = cv.width, Hp = cv.height;
     if (rebuild || !PH.scene) buildPhotoScene(Wp, Hp);
     applyOpens(PH.opens, false);
-    const sc = PH.scene, dl = sc.userData.dl, pos0 = sc.userData.dlPos, N = PH.frames = 6; // a few frames, the light moved a little each time: soft shadows in the photo too
+    const sc = PH.scene, dl = sc.userData.dl, pos0 = sc.userData.dlPos, N = PH.frames = PH.fast ? 1 : 6; // a few frames, the light moved a little each time: soft shadows in the photo too
     const under = document.createElement('canvas'); under.width = Wp; under.height = Hp; const ug = under.getContext('2d');
     thumbR(Wp, Hp); r.setClearColor(0x000000, 0); r.toneMappingExposure = sc.userData.exp || .85;
     // exposure is calibrated once on a first frame: the furniture's lit faces are brought to the brightness of the wall
@@ -2498,7 +2562,7 @@ let toastT = null;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function snapshot() {
   return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, itemsBy: S.itemsBy, customBy: S.customBy, ambiance: S.ambiance,
-    zones: S.zones.map(({ _pp, _pk, _dh, ...zz }) => zz), f35: S.f35 || 0, level: S.level, tools: [...S.tools], shops: [...S.shops], example: S.example, photo: S.example ? null : (S.photoData || (S.photo && photoDataOf(S.photo))),
+    zones: S.zones.map(({ _pp, _pk, _dh, ...zz }) => zz), f35: S.f35 || 0, adj: S.adj || null, level: S.level, tools: [...S.tools], shops: [...S.shops], example: S.example, photo: S.example ? null : (S.photoData || (S.photo && photoDataOf(S.photo))),
     result: S.result, custom: S.custom, active: S.active, genZones: S.genZones, view: S.view };
 }
 function saveProject(name) {
@@ -2520,7 +2584,7 @@ $('#saveOk').onclick = () => { saveProject($('#saveName').value.trim()); $('#sav
 $('#saveCancel').onclick = () => { $('#saveBar').hidden = true; };
 function loadProject(pj) {
   S.projId = pj.id; S.projName = pj.name || ''; S.project = pj.project || 'tv'; S.fab = pj.fab || 'mixte'; S.level = pj.level || 'bricoleur';
-  S.f35 = pj.f35 || 0; S.tools = new Set(pj.tools || []); S.shops = new Set(pj.shops || []); S.zones = Array.isArray(pj.zones) ? pj.zones : []; S.sel = 0; S.redraw = null;
+  S.f35 = pj.f35 || 0; S.adj = pj.adj || { x: 0, y: 0, s: 1 }; S.tools = new Set(pj.tools || []); S.shops = new Set(pj.shops || []); S.zones = Array.isArray(pj.zones) ? pj.zones : []; S.sel = 0; S.redraw = null;
   S.itemsBy = pj.itemsBy && typeof pj.itemsBy === 'object' ? pj.itemsBy : {}; S.customBy = pj.customBy && typeof pj.customBy === 'object' ? pj.customBy : {}; S.ambiance = pj.ambiance || 'bois';
   S.result = Array.isArray(pj.result) ? pj.result : [null, null, null]; S.custom = Array.isArray(pj.custom) ? pj.custom : [null, null, null];
   S.active = S.result[pj.active] ? pj.active : S.result.findIndex(Boolean); S.genZones = pj.genZones || null; S.view = pj.view || '3d';
