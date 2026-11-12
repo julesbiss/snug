@@ -1805,32 +1805,41 @@ function drawProjection() {
 }
 /* The furniture can be pushed into place with a finger and resized with two: four corners placed by hand never
    give a perfect perspective, so the last word belongs to the eye. The correction is kept with the project. */
-function adjReset() { S.adj = { x: 0, y: 0, s: 1 }; $('#adjReset').classList.remove('on'); drawPhotoView(true); }
+function adjApply() {
+  const a = S.adj || (S.adj = { x: 0, y: 0, s: 1 });
+  (PH.groups || []).forEach((g) => { g.G.position.copy(g.base).addScaledVector(g.ex, a.x).addScaledVector(g.ey, -a.y); g.G.scale.setScalar(a.s); });
+}
+let adjRaf = 0;
+function adjDraw(fast) { // one redraw per screen frame: rebuilding the scene on every finger move crashes the phone
+  if (adjRaf) return;
+  adjRaf = requestAnimationFrame(() => { adjRaf = 0; adjApply(); PH.fast = !!fast; drawPhotoView(false); PH.fast = false; });
+}
+function adjReset() { S.adj = { x: 0, y: 0, s: 1 }; $('#adjReset').classList.remove('on'); adjDraw(false); }
 function adjShow() { const a = S.adj || (S.adj = { x: 0, y: 0, s: 1 }); $('#adjReset').classList.toggle('on', !!(a.x || a.y || a.s !== 1)); }
 (function () {
-  const cv = $('#cv3'); let down = null, drag = null, pinch = null;
+  const cv = $('#cv3'); let down = null, drag = null, pinch = null, pinchDone = false;
   const pts = new Map();
   const mmPerPx = () => { const z = (S.genZones || S.zones)[0] || DEFZ, r = cv.getBoundingClientRect(); return (pos(z.A) || 1000) / Math.max(60, (z.w || .6) * r.width); };
   cv.addEventListener('pointerdown', (e) => {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: (S.adj || {}).s || 1 }; drag = null; return; }
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: (S.adj || {}).s || 1 }; pinchDone = true; drag = null; return; }
     down = { x: e.clientX, y: e.clientY }; drag = { x: e.clientX, y: e.clientY, moved: false, a0: { ...(S.adj || { x: 0, y: 0, s: 1 }) } };
     cv.setPointerCapture(e.pointerId);
   });
   cv.addEventListener('pointermove', (e) => {
     const p = pts.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
     const a = S.adj || (S.adj = { x: 0, y: 0, s: 1 });
-    if (pinch && pts.size === 2) { const [u, v] = [...pts.values()]; a.s = clamp(pinch.s0 * (Math.hypot(u.x - v.x, u.y - v.y) / pinch.d), .35, 3); PH.fast = true; drawPhotoView(true); return; }
+    if (pinch && pts.size === 2) { const [u, v] = [...pts.values()]; a.s = clamp(pinch.s0 * (Math.hypot(u.x - v.x, u.y - v.y) / pinch.d), .35, 3); adjDraw(true); return; }
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (!drag.moved && Math.hypot(dx, dy) < 7) return;
     drag.moved = true; down = null; const k = mmPerPx();
-    a.x = drag.a0.x + dx * k; a.y = drag.a0.y + dy * k; PH.fast = true; drawPhotoView(true);
+    a.x = drag.a0.x + dx * k; a.y = drag.a0.y + dy * k; adjDraw(true);
   });
   const end = (e) => {
     pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
-    if (drag && drag.moved) { drag = null; PH.fast = false; adjShow(); drawPhotoView(true); return; }
-    drag = null; if (pts.size === 0 && PH.fast) { PH.fast = false; adjShow(); drawPhotoView(true); }
+    if (drag && drag.moved) { drag = null; adjShow(); adjDraw(false); return; }
+    drag = null; if (pts.size === 0 && pinchDone) { pinchDone = false; adjShow(); adjDraw(false); }
   };
   cv.addEventListener('pointercancel', end);
   cv.addEventListener('pointerup', (e) => { end(e); });
@@ -2315,16 +2324,15 @@ function buildPhotoScene(Wp, Hp) {
   const roomEnv = clamp(.15 + est.level * .5, .15, .6);
   Object.values(E.mats).forEach((m) => { if (m.envMapIntensity === undefined) return; if (m.userData.env0 === undefined) m.userData.env0 = m.envMapIntensity; m.envMapIntensity = m.userData.env0 * (m.metalness > .5 ? .8 : roomEnv); });
   PH.envDirty = true;
-  PH.opens = []; PH.picks = []; REG = PH;
+  PH.opens = []; PH.picks = []; PH.groups = []; REG = PH;
   const V = (v, k) => new THREE.Vector3(v[0] * k, -v[1] * k, -v[2] * k); // camera axes of the photo (y down, z forward) → three.js
   let base = null;
   p.modules.forEach((m, mi) => {
     const z = zs[mi], L = layoutModule(m, z), P = zonePose(z, Wp, Hp, f), A = pos(z.A) || L.W, B = pos(z.B) || A * P.ratio;
     const ex = V(P.r1, 1), ey = V(P.r2, -1), ez = V(P.r3, -1);
     const G = new THREE.Group(); G.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex, ey, ez));
-    const adj = S.adj || (S.adj = { x: 0, y: 0, s: 1 }); // the hand correction: a drawn rectangle is never exact
-    G.position.copy(V(P.o, A)).addScaledVector(ey, -B).addScaledVector(ex, (A - L.W) / 2 + adj.x).addScaledVector(ey, -adj.y);
-    G.scale.setScalar(adj.s); sc.add(G);
+    G.position.copy(V(P.o, A)).addScaledVector(ey, -B).addScaledVector(ex, (A - L.W) / 2); sc.add(G);
+    PH.groups.push({ G, base: G.position.clone(), ex: ex.clone(), ey: ey.clone() }); // the hand correction is applied to the group, never by rebuilding the scene
     buildModule(G, L, mi, M, feet);
     if (!base || (base.L.raised && !L.raised)) base = { G, L };
   });
@@ -2333,10 +2341,13 @@ function buildPhotoScene(Wp, Hp) {
   const fg = new THREE.Group(); fg.position.copy(base.G.position); fg.quaternion.copy(base.G.quaternion); sc.add(fg);
   const fl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .55 })); fl.userData.own = true; fl.rotation.x = -Math.PI / 2; fl.position.set(0, base.L.raised ? -2000 : 0, 0); fl.receiveShadow = true; fg.add(fl);
   const wl = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), new THREE.ShadowMaterial({ opacity: .22 })); wl.userData.own = true; wl.position.set(0, 0, -2); wl.receiveShadow = true; fg.add(wl);
+  const b0 = PH.groups.find((g) => g.G === base.G) || PH.groups[0];
+  if (b0) PH.groups.push({ G: fg, base: fg.position.clone(), ex: b0.ex, ey: b0.ey }); // the shadow catcher follows the furniture
   fg.updateMatrixWorld(true);
   const bl = base.L; dl.position.copy(fg.localToWorld(new THREE.Vector3(bl.W / 2 - 1700, bl.H + 2600, bl.D + 2200))); dl.target.position.copy(fg.localToWorld(new THREE.Vector3(bl.W / 2, 0, bl.D / 2))); sc.add(dl.target);
   Object.assign(dl.shadow.camera, { left: -4500, right: 4500, top: 4500, bottom: -4500, near: 100, far: 15000 }); dl.shadow.camera.updateProjectionMatrix();
   sc.userData.dl = dl; sc.userData.dlPos = dl.position.clone(); dl.shadow.autoUpdate = false;
+  adjApply();
   PH.scene = sc; PH.cam = cam;
 }
 function drawPhotoView(rebuild) {
@@ -2348,26 +2359,30 @@ function drawPhotoView(rebuild) {
     if (rebuild || !PH.scene) buildPhotoScene(Wp, Hp);
     applyOpens(PH.opens, false);
     const sc = PH.scene, dl = sc.userData.dl, pos0 = sc.userData.dlPos, N = PH.frames = PH.fast ? 1 : 6; // a few frames, the light moved a little each time: soft shadows in the photo too
+    // while a finger is moving the furniture, draw at half size and keep the last shadow map: what matters then is that it follows the finger
+    const Rw = PH.fast ? Math.round(Wp / 2) : Wp, Rh = PH.fast ? Math.round(Hp / 2) : Hp;
     const under = document.createElement('canvas'); under.width = Wp; under.height = Hp; const ug = under.getContext('2d');
-    thumbR(Wp, Hp); r.setClearColor(0x000000, 0); r.toneMappingExposure = sc.userData.exp || .85;
+    thumbR(Rw, Rh); r.setClearColor(0x000000, 0); r.toneMappingExposure = sc.userData.exp || .85;
     // exposure is calibrated once on a first frame: the furniture's lit faces are brought to the brightness of the wall
     // right behind it in the photo (a render that is brighter than its own background is what reads as "pasted on")
-    if (sc.userData.calib === undefined) {
+    if (sc.userData.calib === undefined && !PH.fast) {
       r.render(sc, PH.cam);
       const pc = document.createElement('canvas'); pc.width = 64; pc.height = 64; const pg = pc.getContext('2d'); pg.drawImage(T.cv, 0, 0, 64, 64); const pd = pg.getImageData(0, 0, 64, 64).data;
       let sum = 0, n = 0; for (let i = 0; i < pd.length; i += 4) if (pd[i + 3] > 200) { sum += .2126 * pd[i] + .7152 * pd[i + 1] + .0722 * pd[i + 2]; n++; }
       const furn = n ? sum / n / 255 : .6, want = clamp(sc.userData.wall * 1.05, .15, .9);
       sc.userData.calib = n > 50 ? clamp(want / Math.max(furn, .05), .4, 1.6) : 1;
       r.toneMappingExposure = (sc.userData.exp || .85) * sc.userData.calib;
-    } else r.toneMappingExposure = (sc.userData.exp || .85) * sc.userData.calib;
+    } else r.toneMappingExposure = (sc.userData.exp || .85) * (sc.userData.calib || 1);
     for (let i = 0; i < N; i++) {
       const a = 2 * Math.PI * halton(i, 2), rd = Math.sqrt(halton(i, 3)) * 900; dl.position.set(pos0.x + Math.cos(a) * rd, pos0.y + Math.sin(a) * rd * .4, pos0.z + Math.sin(a) * rd);
-      dl.shadow.needsUpdate = true; r.render(sc, PH.cam); ug.globalAlpha = 1 / (i + 1); ug.drawImage(T.cv, 0, 0, Wp, Hp);
+      dl.shadow.needsUpdate = !PH.fast; r.render(sc, PH.cam); ug.globalAlpha = 1 / (i + 1); ug.drawImage(T.cv, 0, 0, Wp, Hp);
     }
     r.toneMappingExposure = 1; if (PH.envDirty) { E.envK = null; PH.envDirty = false; }
     // a render is too clean next to a phone photo: a touch of blur and of grain makes it sit in the picture
-    g.save(); g.filter = 'blur(.6px)'; g.drawImage(under, 0, 0); g.restore();
-    const gr = grainCanvas(); g.save(); g.globalAlpha = .07; g.globalCompositeOperation = 'overlay'; for (let y = 0; y < Hp; y += gr.height) for (let x = 0; x < Wp; x += gr.width) g.drawImage(gr, x, y); g.restore();
+    if (PH.fast) { g.drawImage(under, 0, 0); } else {
+      g.save(); g.filter = 'blur(.6px)'; g.drawImage(under, 0, 0); g.restore();
+      const gr = grainCanvas(); g.save(); g.globalAlpha = .07; g.globalCompositeOperation = 'overlay'; for (let y = 0; y < Hp; y += gr.height) for (let x = 0; x < Wp; x += gr.width) g.drawImage(gr, x, y); g.restore();
+    }
     S.keys2d = PH.opens.map((o) => o.userData.key); S.hits = [];
   } catch (err) { PH.ok = false; drawProjection(); }
 }
