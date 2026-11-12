@@ -1096,7 +1096,7 @@ function cellRules(L, c) {
 function openCell(ref) {
   const first = !S.selCell; S.selCell = ref; S.cellMsg = ''; document.body.classList.add('celledit'); window.scrollTo({ top: 0 });
   setEditMode(false, true); renderCell(); resize3D();
-  if (E.inited) { build3D(); if (first && E.orbit) { E.rBack = E.orbit.r; E.rTo = E.orbit.r * 1.28; } } // step back a little: an open door or drawer must stay in the picture
+  if (E.inited) { build3D(); if (first && E.orbit && !E.userView) { E.rBack = E.orbit.r; E.rTo = E.orbit.r * 1.28; } } // step back a little: an open door or drawer must stay in the picture
 }
 // "Modifier" mode: frames every case and explains that a case can be touched. Shown once automatically.
 function setEditMode(on, quiet) { // kept for the first-visit coaching: the dots do the explaining now
@@ -2006,7 +2006,7 @@ function init3D() {
     const panBy = (dx, dy) => { // move the point the camera looks at, in the plane of the screen
       const h = cv.clientHeight || 300, k = 2 * E.orbit.r * Math.tan(E.cam.fov * Math.PI / 360) / h;
       const right = new THREE.Vector3().setFromMatrixColumn(E.cam.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(E.cam.matrixWorld, 1);
-      E.orbit.target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+      E.userView = true; E.orbit.target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
       const ext = E.ext || { w: 2, h: 2 }; // never let the furniture be pushed out of sight
       E.orbit.target.x = clamp(E.orbit.target.x, -ext.w, ext.w); E.orbit.target.y = clamp(E.orbit.target.y, -.2, ext.h + .6); E.orbit.target.z = clamp(E.orbit.target.z, -1, 1.2);
     };
@@ -2022,7 +2022,7 @@ function init3D() {
       if (ptrs.size === 2) {
         const d = dist(), c = centre();
         if (mid && c) panBy(c.x - mid.x, c.y - mid.y); // two fingers sliding together: move the view
-        if (pinch && d) { const f = clamp(pinch / d, .5, 2), r0 = E.orbit.r; E.orbit.r = clamp(r0 * f, .35, 14);
+        if (pinch && d) { const f = clamp(pinch / d, .5, 2), r0 = E.orbit.r; E.userView = true; E.orbit.r = clamp(r0 * f, .35, 14);
           if (c) { const h = cv.clientHeight || 300, cr = cv.getBoundingClientRect(); // zoom toward the point between the fingers
             panBy((c.x - cr.left - cr.width / 2) * (1 - E.orbit.r / r0), (c.y - cr.top - h / 2) * (1 - E.orbit.r / r0)); } }
         pinch = d; mid = c; return;
@@ -2035,14 +2035,14 @@ function init3D() {
       if (ptrs.size === 0) { fast(false); if (down && !down.moved && e.type === 'pointerup') pick(e); down = null; }
     };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    cv.addEventListener('wheel', (e) => { e.preventDefault(); E.orbit.r = clamp(E.orbit.r * (1 + e.deltaY * .0012), .35, 14); }, { passive: false });
+    cv.addEventListener('wheel', (e) => { e.preventDefault(); E.userView = true; E.rTo = null; E.thTo = null; E.orbit.r = clamp(E.orbit.r * (1 + e.deltaY * .0012), .35, 14); }, { passive: false });
     if (window.ResizeObserver) new ResizeObserver(resize3D).observe($('#stage3d'));
     E.inited = true;
   } catch (err) { E.ok = false; S.view = 'photo'; }
 }
 let STAGE_H = 340;
 function stageSize() { // the 3D view takes the upper part of the screen and stays there while the settings scroll
-  STAGE_H = Math.round(clamp(window.innerHeight * (document.body.classList.contains('celledit') ? .4 : .43), 250, 470));
+  STAGE_H = Math.round(clamp(window.innerHeight * .43, 250, 470));
   document.documentElement.style.setProperty('--stageH', STAGE_H + 'px');
 }
 function resize3D() {
@@ -2234,11 +2234,13 @@ function build3D() {
     maxY = Math.max(maxY, L.H + 70 + th);
   }
   E.root.position.set(-maxX / 2 * .001, 0, 0);
-  E.orbit.target.set(0, maxY / 2 * .001, maxD / 2 * .001); E.ctr = E.orbit.target.clone(); E.ext = { w: maxX * .001, h: maxY * .001 }; E.dirty = true; E.envK = null;
+  E.ctr = new THREE.Vector3(0, maxY / 2 * .001, maxD / 2 * .001);
+  if (!E.userView) E.orbit.target.copy(E.ctr); // after a change, keep where the user was looking
+  E.ext = { w: maxX * .001, h: maxY * .001 }; E.dirty = true; E.envK = null;
   updateOpenBtn(); buildSpots();
 }
 function frame() {
-  if (!E.ext) return; const fov = E.cam.fov * Math.PI / 180;
+  if (!E.ext) return; E.userView = false; const fov = E.cam.fov * Math.PI / 180;
   const ext = Math.max(E.ext.w / Math.max(E.cam.aspect, .6), E.ext.h * 1.25, .5);
   E.orbit.r = clamp(ext / (2 * Math.tan(fov / 2)) * 1.3, .8, 12); E.orbit.theta = .32; E.orbit.phi = 1.2;
   if (E.ctr) E.orbit.target.copy(E.ctr);
