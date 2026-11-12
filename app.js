@@ -1148,7 +1148,12 @@ function cellOp(op) {
     const j = op === 'mergeUp' ? ref.ri + 1 : ref.ri - 1, o = cs[j]; if (!o) return;
     const merged = { ...k, hauteur_mm: num(k.hauteur_mm) + num(o.hauteur_mm) + T, tringle: !!(k.tringle || o.tringle) };
     cs.splice(Math.min(ref.ri, j), 2, merged); ref.ri = Math.min(ref.ri, j);
-  } else if (op === 'up' || op === 'down') { const j = op === 'up' ? ref.ri + 1 : ref.ri - 1; [cs[ref.ri], cs[j]] = [cs[j], cs[ref.ri]]; ref.ri = j; }
+  } else if (op === 'up' || op === 'down') {
+    // the contents change place, the shelves stay where they are: otherwise the whole column seems to move
+    const j = op === 'up' ? ref.ri + 1 : ref.ri - 1, A2 = cs[ref.ri], B2 = cs[j];
+    const take = (o) => ({ type: o.type, contenu: o.contenu, tringle: o.tringle, parts: o.parts }), put = (o, v) => { o.type = v.type; o.contenu = v.contenu; o.tringle = v.tringle; if (v.parts) o.parts = v.parts; else delete o.parts; };
+    const a2 = take(A2), b2 = take(B2); put(A2, b2); put(B2, a2); ref.ri = j;
+  }
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
   else if (op === 'taller' || op === 'shorter') {
     // move the shelf that separates this case from the one above (or below, for the top case) by 20 mm
@@ -1991,17 +1996,46 @@ function init3D() {
     halo.position.set(0, 1.5, .004); E.scene.add(halo);
     E.root = new THREE.Group(); E.root.scale.setScalar(.001); E.scene.add(E.root);
     E.orbit = { theta: .32, phi: 1.2, r: 4, target: new THREE.Vector3(0, .3, .2) }; E.ray = new THREE.Raycaster();
-    const ptrs = new Map(); let down = null, pinch = 0;
-    const dist = () => { const a = [...ptrs.values()]; return a.length < 2 ? 0 : (Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1); };
-    cv.addEventListener('pointerdown', (e) => { $('#hint3d').classList.add('gone'); E.rTo = null; cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptrs.size === 1) down = { x: e.clientX, y: e.clientY, moved: false }; else { if (down) down.moved = true; pinch = dist(); } });
+    /* One finger turns the furniture. Two fingers move it and zoom, around the point between them, so you can
+       look closely at one drawer. While a finger is down the picture is drawn smaller and the shadows are kept
+       as they are: what matters then is that it follows the hand. Full quality comes back on release. */
+    const ptrs = new Map(); let down = null, pinch = 0, mid = null;
+    const two = () => [...ptrs.values()];
+    const dist = () => { const a = two(); return a.length < 2 ? 0 : (Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1); };
+    const centre = () => { const a = two(); return a.length < 2 ? null : { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2 }; };
+    const panBy = (dx, dy) => { // move the point the camera looks at, in the plane of the screen
+      const h = cv.clientHeight || 300, k = 2 * E.orbit.r * Math.tan(E.cam.fov * Math.PI / 360) / h;
+      const right = new THREE.Vector3().setFromMatrixColumn(E.cam.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(E.cam.matrixWorld, 1);
+      E.orbit.target.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+      const ext = E.ext || { w: 2, h: 2 }; // never let the furniture be pushed out of sight
+      E.orbit.target.x = clamp(E.orbit.target.x, -ext.w, ext.w); E.orbit.target.y = clamp(E.orbit.target.y, -.2, ext.h + .6); E.orbit.target.z = clamp(E.orbit.target.z, -1, 1.2);
+    };
+    const fast = (on) => { if (E.fast === on) return; E.fast = on; if (E.key) E.key.shadow.autoUpdate = !on; E.r.setPixelRatio(on ? 1 : Math.min(2, window.devicePixelRatio || 1)); E.dirty = true; };
+    cv.addEventListener('pointerdown', (e) => {
+      $('#hint3d').classList.add('gone'); E.rTo = null; E.thTo = null; cv.setPointerCapture(e.pointerId);
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); fast(true);
+      if (ptrs.size === 1) down = { x: e.clientX, y: e.clientY, moved: false };
+      else { if (down) down.moved = true; pinch = dist(); mid = centre(); }
+    });
     cv.addEventListener('pointermove', (e) => {
       const p = ptrs.get(e.pointerId); if (!p) return; const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-      if (ptrs.size === 2) { const d = dist(); if (pinch) E.orbit.r = clamp(E.orbit.r * pinch / d, .6, 12); pinch = d; return; }
-      if (down) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.moved = true; if (down.moved) { E.orbit.theta -= dx * .008; E.orbit.phi = clamp(E.orbit.phi - dy * .006, .2, 1.52); } }
+      if (ptrs.size === 2) {
+        const d = dist(), c = centre();
+        if (mid && c) panBy(c.x - mid.x, c.y - mid.y); // two fingers sliding together: move the view
+        if (pinch && d) { const f = clamp(pinch / d, .5, 2), r0 = E.orbit.r; E.orbit.r = clamp(r0 * f, .35, 14);
+          if (c) { const h = cv.clientHeight || 300, cr = cv.getBoundingClientRect(); // zoom toward the point between the fingers
+            panBy((c.x - cr.left - cr.width / 2) * (1 - E.orbit.r / r0), (c.y - cr.top - h / 2) * (1 - E.orbit.r / r0)); } }
+        pinch = d; mid = c; return;
+      }
+      if (down) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.moved = true; if (down.moved) { E.orbit.theta -= dx * .008; E.orbit.phi = clamp(E.orbit.phi - dy * .006, .12, 1.56); } }
     });
-    const up = (e) => { if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = 0; if (ptrs.size === 0) { if (down && !down.moved && e.type === 'pointerup') pick(e); down = null; } };
+    const up = (e) => {
+      if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId);
+      if (ptrs.size < 2) { pinch = 0; mid = null; }
+      if (ptrs.size === 0) { fast(false); if (down && !down.moved && e.type === 'pointerup') pick(e); down = null; }
+    };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    cv.addEventListener('wheel', (e) => { e.preventDefault(); E.orbit.r = clamp(E.orbit.r * (1 + e.deltaY * .0012), .6, 12); }, { passive: false });
+    cv.addEventListener('wheel', (e) => { e.preventDefault(); E.orbit.r = clamp(E.orbit.r * (1 + e.deltaY * .0012), .35, 14); }, { passive: false });
     if (window.ResizeObserver) new ResizeObserver(resize3D).observe($('#stage3d'));
     E.inited = true;
   } catch (err) { E.ok = false; S.view = 'photo'; }
@@ -2200,13 +2234,14 @@ function build3D() {
     maxY = Math.max(maxY, L.H + 70 + th);
   }
   E.root.position.set(-maxX / 2 * .001, 0, 0);
-  E.orbit.target.set(0, maxY / 2 * .001, maxD / 2 * .001); E.ext = { w: maxX * .001, h: maxY * .001 }; E.dirty = true; E.envK = null;
+  E.orbit.target.set(0, maxY / 2 * .001, maxD / 2 * .001); E.ctr = E.orbit.target.clone(); E.ext = { w: maxX * .001, h: maxY * .001 }; E.dirty = true; E.envK = null;
   updateOpenBtn(); buildSpots();
 }
 function frame() {
   if (!E.ext) return; const fov = E.cam.fov * Math.PI / 180;
   const ext = Math.max(E.ext.w / Math.max(E.cam.aspect, .6), E.ext.h * 1.25, .5);
   E.orbit.r = clamp(ext / (2 * Math.tan(fov / 2)) * 1.3, .8, 12); E.orbit.theta = .32; E.orbit.phi = 1.2;
+  if (E.ctr) E.orbit.target.copy(E.ctr);
 }
 /* Progressive render. While you turn the furniture, one quick frame. As soon as the view is still, the app keeps
    rendering it — each frame with the light coming from a slightly different place — and averages the frames:
@@ -2241,6 +2276,7 @@ function renderFrame() {
     A.w = w; A.h = h; E.dirty = true;
   }
   if (E.dirty) { A.n = 0; E.dirty = false; }
+  if (E.fast) { r.setRenderTarget(null); r.render(E.scene, E.cam); A.n = 0; return; } // a finger is moving: draw straight to the screen, no accumulation
   if (A.n >= A.max) return; // settled: nothing to draw, the phone rests
   const n = A.n, still = n > 0, tg = E.orbit.target;
   E.sky.target.position.copy(tg); E.sky.shadow.autoUpdate = still;
