@@ -1151,8 +1151,15 @@ function cellOp(op) {
   } else if (op === 'up' || op === 'down') {
     // the contents change place, the shelves stay where they are: otherwise the whole column seems to move
     const j = op === 'up' ? ref.ri + 1 : ref.ri - 1, A2 = cs[ref.ri], B2 = cs[j];
-    const take = (o) => ({ type: o.type, contenu: o.contenu, tringle: o.tringle, parts: o.parts }), put = (o, v) => { o.type = v.type; o.contenu = v.contenu; o.tringle = v.tringle; if (v.parts) o.parts = v.parts; else delete o.parts; };
-    const a2 = take(A2), b2 = take(B2); put(A2, b2); put(B2, a2); ref.ri = j;
+    const na = Array.isArray(A2.parts) ? A2.parts.length : 1, nb = Array.isArray(B2.parts) ? B2.parts.length : 1;
+    if (na > 1 || nb > 1) {
+      // a divided case: only the compartment the user touched changes place, not the one beside it
+      if (na !== nb) return say(`La case ${op === 'up' ? 'du dessus' : 'du dessous'} n’est pas divisée comme celle-ci : divisez-la en ${na} pour déplacer une seule partie, ou réunissez celle-ci en largeur.`);
+      const pi = ref.pi || 0, keep = A2.parts[pi]; A2.parts[pi] = B2.parts[pi]; B2.parts[pi] = keep; ref.ri = j;
+    } else {
+      const take = (o) => ({ type: o.type, contenu: o.contenu, tringle: o.tringle, parts: o.parts }), put = (o, v) => { o.type = v.type; o.contenu = v.contenu; o.tringle = v.tringle; if (v.parts) o.parts = v.parts; else delete o.parts; };
+      const a2 = take(A2), b2 = take(B2); put(A2, b2); put(B2, a2); ref.ri = j;
+    }
   }
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
   else if (op === 'taller' || op === 'shorter') {
@@ -2707,7 +2714,7 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(-1);
-if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView };
+if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
   const id = new URLSearchParams(location.search).get('shot'); if (!id) return;
