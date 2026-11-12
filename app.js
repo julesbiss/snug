@@ -216,6 +216,13 @@ function makeEnv(renderer) {
   }
 }
 /* Soft darkening where panels meet (inside a case, the light never reaches the corners): the cue the eye uses most to tell a real object from a drawing */
+function haloCanvas() {
+  if (TEX._halo) return TEX._halo;
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(N / 2, N * .56, 6, N / 2, N * .56, N * .5);
+  gr.addColorStop(0, 'rgba(255,248,236,.5)'); gr.addColorStop(.45, 'rgba(255,245,230,.22)'); gr.addColorStop(1, 'rgba(255,245,230,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, N, N); TEX._halo = c; return c;
+}
 function aoCanvas() {
   if (TEX._ao) return TEX._ao;
   const N = 128, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data;
@@ -1079,13 +1086,12 @@ function openCell(ref) {
   if (E.inited) { build3D(); if (first && E.orbit) { E.rBack = E.orbit.r; E.rTo = E.orbit.r * 1.28; } } // step back a little: an open door or drawer must stay in the picture
 }
 // "Modifier" mode: frames every case and explains that a case can be touched. Shown once automatically.
-function setEditMode(on, quiet) {
-  S.showCells = !!on; $('#editBtn').setAttribute('aria-pressed', String(S.showCells)); $('#editTip').hidden = !S.showCells;
-  clearTimeout(S.editT); if (on) S.editT = setTimeout(() => setEditMode(false), 6000);
-  if (!quiet && E.inited && S.view === '3d') build3D();
+function setEditMode(on, quiet) { // kept for the first-visit coaching: the dots do the explaining now
+  S.showCells = false; const tip = $('#editTip'); tip.hidden = !on; $('#hint3d').classList.toggle('gone', !!on);
+  clearTimeout(S.editT); if (on) S.editT = setTimeout(() => { tip.hidden = true; $('#hint3d').classList.remove('gone'); }, 5200);
+  $('#spots').classList.toggle('call', !!on);
 }
-$('#editBtn').onclick = () => { if (S.view !== '3d') { S.view = '3d'; renderView(); } setEditMode(!S.showCells); };
-function closeCell() { if (!S.selCell) return; S.selCell = null; $('#cellSheet').hidden = true; document.body.classList.remove('celledit'); resize3D(); if (E.inited) { build3D(); if (E.rBack) { E.rTo = E.rBack; E.rBack = null; } } updateBar(); }
+function closeCell() { if (!S.selCell) return; S.selCell = null; setTimeout(() => placeSpots(true), 0); $('#cellSheet').hidden = true; document.body.classList.remove('celledit'); resize3D(); if (E.inited) { build3D(); if (E.rBack) { E.rTo = E.rBack; E.rBack = null; } } updateBar(); }
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
   const { col, k, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
@@ -1877,6 +1883,9 @@ function init3D() {
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), E.floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; E.scene.add(floor);
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), E.wallMat); wall.position.set(0, 2.5, 0); wall.receiveShadow = true; E.scene.add(wall);
     const sk = new THREE.Mesh(new THREE.BoxGeometry(14, .07, .012), new THREE.MeshStandardMaterial({ color: 0xF1EEE9, roughness: .5 })); sk.position.set(0, .035, .006); sk.receiveShadow = true; sk.castShadow = true; E.scene.add(sk);
+    // a pool of light on the wall behind the furniture, the way a product is lit in a studio: it gives the picture depth
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(7, 4.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(haloCanvas()), transparent: true, opacity: .5, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
+    halo.position.set(0, 1.5, .004); E.scene.add(halo);
     E.root = new THREE.Group(); E.root.scale.setScalar(.001); E.scene.add(E.root);
     E.orbit = { theta: .32, phi: 1.2, r: 4, target: new THREE.Vector3(0, .3, .2) }; E.ray = new THREE.Raycaster();
     const ptrs = new Map(); let down = null, pinch = 0;
@@ -1957,13 +1966,7 @@ function buildModule(G, L, mi, M, feet) {
     const [ci, ri] = c.key.split('-').map(Number);
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(c.w, c.h), new THREE.MeshBasicMaterial()); pl.visible = false;
     pl.position.set(c.x + c.w / 2, c.y + c.h / 2, D + 24); pl.userData.cell = { mi, ci, ri }; G.add(pl); E.cellPicks.push(pl);
-    if (S.showCells) { // edit mode: every case gets a gold frame, to show it can be touched
-      const gm = new THREE.MeshBasicMaterial({ color: 0xD9962F, toneMapped: false }), b = 10, z = D + 26, cx = c.x + c.w / 2, cy = c.y + c.h / 2;
-      [[c.w - 16, b, 0, c.h / 2 - 8], [c.w - 16, b, 0, -c.h / 2 + 8], [b, c.h - 16, c.w / 2 - 8, 0], [b, c.h - 16, -c.w / 2 + 8, 0]].forEach(([w, h, dx, dy]) => {
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), gm); m.position.set(cx + dx, cy + dy, z); G.add(m); });
-      const fill = new THREE.Mesh(new THREE.PlaneGeometry(c.w - 16, c.h - 16), new THREE.MeshBasicMaterial({ color: 0xE9B26B, transparent: true, opacity: .16, depthWrite: false, toneMapped: false }));
-      fill.position.set(cx, cy, z - 1); G.add(fill);
-    }
+    pl.userData.cw = c.w; pl.userData.ch = c.h;
     const sc = S.selCell;
     if (sc && sc.mi === mi && sc.ci === ci && sc.ri === ri) {
       const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(c.w + 6, c.h + 6, D + 30)), new THREE.LineBasicMaterial({ color: 0xB9782A, toneMapped: false }));
@@ -2094,7 +2097,7 @@ function build3D() {
   }
   E.root.position.set(-maxX / 2 * .001, 0, 0);
   E.orbit.target.set(0, maxY / 2 * .001, maxD / 2 * .001); E.ext = { w: maxX * .001, h: maxY * .001 }; E.dirty = true; E.envK = null;
-  updateOpenBtn();
+  updateOpenBtn(); buildSpots();
 }
 function frame() {
   if (!E.ext) return; const fov = E.cam.fov * Math.PI / 180;
@@ -2111,7 +2114,7 @@ function accInit(r) {
     if (!ok) return null;
     const vs = 'varying vec2 v; void main(){ v = uv; gl_Position = vec4(position.xy, 0., 1.); }', mk = (fs, o) => new THREE.ShaderMaterial(Object.assign({ uniforms: { t: { value: null }, a: { value: 1 } }, vertexShader: vs, fragmentShader: 'uniform sampler2D t; uniform float a; varying vec2 v; void main(){ vec3 c = texture2D(t, v).rgb; ' + fs + ' }', depthTest: false, depthWrite: false }, o || {}));
     const A = { n: 0, max: 48, w: 0, h: 0, sc: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
-    A.add = mk('gl_FragColor = vec4(pow(c, vec3(2.2)), a);', { transparent: true }); A.out = mk('gl_FragColor = vec4(pow(c, vec3(1. / 2.2)), 1.);');
+    A.add = mk('gl_FragColor = vec4(pow(c, vec3(2.2)), a);', { transparent: true }); A.out = mk('vec3 g = pow(c, vec3(1. / 2.2)); g = mix(g, g * g * (3. - 2. * g), .16); float r = distance(v, vec2(.5)); g *= 1. - .26 * smoothstep(.42, .96, r); gl_FragColor = vec4(g, 1.);'); // gentle filmic contrast and a vignette: the two things that separate a render from a photograph
     A.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), A.add); A.quad.frustumCulled = false; A.sc.add(A.quad); return A;
   } catch { return null; }
 }
@@ -2152,14 +2155,50 @@ function renderFrame() {
   A.quad.material = A.out; A.out.uniforms.t.value = A.rtA.texture; r.setRenderTarget(null); r.render(A.sc, A.cam);
   r.autoClear = ac; A.n++;
 }
+/* Touch dots: one per case, drawn in HTML over the 3D view. They say "this opens" at a glance, give a big enough
+   target for a finger, and stay out of the render itself, which keeps the picture clean. */
+const SPOT = { items: [], key: '' };
+function buildSpots() {
+  const box = $('#spots'); box.innerHTML = ''; SPOT.items = []; SPOT.key = '';
+  if (!E.inited || S.view !== '3d') return;
+  (E.cellPicks || []).forEach((pl) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'spot';
+    const cell = pl.userData.cell; b.setAttribute('aria-label', `Modifier la case ${cell.ci + 1}`);
+    b.onclick = (e) => { e.stopPropagation(); setEditMode(false); openCell(cell); };
+    box.appendChild(b); SPOT.items.push({ b, pl, cell });
+  });
+  placeSpots(true);
+}
+function placeSpots(force) {
+  if (!SPOT.items.length || !E.cam) return;
+  const cv = $('#cv3d'), W = cv.clientWidth, H = cv.clientHeight;
+  const key = E.camKey + '|' + W + '|' + H + '|' + (S.selCell ? S.selCell.ci + '-' + S.selCell.ri : '');
+  if (!force && key === SPOT.key) return; SPOT.key = key;
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), d = new THREE.Vector3();
+  SPOT.items.forEach(({ b, pl, cell }) => {
+    pl.getWorldPosition(v); n.set(0, 0, 1).applyQuaternion(pl.getWorldQuaternion(new THREE.Quaternion()));
+    d.copy(E.cam.position).sub(v).normalize();
+    const facing = n.dot(d);
+    const p = v.clone().project(E.cam);
+    const x = (p.x + 1) / 2 * W, y = (1 - p.y) / 2 * H;
+    const on = facing > .2 && p.z < 1 && x > 6 && x < W - 6 && y > 6 && y < H - 6;
+    b.style.display = on ? '' : 'none';
+    if (!on) return;
+    b.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) translate(-50%, -50%)`;
+    b.style.opacity = String(clamp(.5 + facing * .6, .62, 1));
+    const sel = S.selCell && S.selCell.mi === cell.mi && S.selCell.ci === cell.ci && S.selCell.ri === cell.ri;
+    b.classList.toggle('on', !!sel);
+  });
+}
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
+  if (E.thTo !== undefined && E.thTo !== null) { const o = E.orbit; o.theta += (E.thTo - o.theta) * .12; if (Math.abs(E.thTo - o.theta) < .002) { o.theta = E.thTo; E.thTo = null; } }
   const moving = applyOpens(E.opens, true);
   if (E.rTo) { const o = E.orbit; o.r += (E.rTo - o.r) * .16; if (Math.abs(E.rTo - o.r) < .004) { o.r = E.rTo; E.rTo = null; } }
   const ob = E.orbit, sp = Math.sin(ob.phi), key = [ob.theta, ob.phi, ob.r, ob.target.x, ob.target.y, ob.target.z].map((v) => v.toFixed(4)).join();
   if (moving || key !== E.camKey) { E.dirty = true; E.camKey = key; }
   E.cam.position.set(ob.target.x + ob.r * sp * Math.sin(ob.theta), ob.target.y + ob.r * Math.cos(ob.phi), ob.target.z + ob.r * sp * Math.cos(ob.theta));
-  E.cam.lookAt(ob.target); renderFrame();
+  E.cam.lookAt(ob.target); renderFrame(); placeSpots();
 }
 function startLoop() { if (!E.running && E.inited) { E.running = true; requestAnimationFrame(loop); } }
 function stopLoop() { E.running = false; }
@@ -2170,7 +2209,9 @@ function renderView() {
   $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d'; $('#hint3d').hidden = S.view !== '3d';
   if (S.view === '3d') {
     init3D(); if (!E.ok) return renderView();
-    resize3D(); build3D(); if (!E.framed) { frame(); E.framed = true; } startLoop();
+    resize3D(); build3D();
+    if (!E.framed) { frame(); E.framed = true; E.orbit.r *= 1.22; E.rTo = E.orbit.r / 1.22; E.orbit.theta -= .28; E.thTo = E.orbit.theta + .28; } // a short move in: the furniture settles into place
+    startLoop();
   } else { stopLoop(); drawPhotoView(true); updateOpenBtn(); }
   updateRealBtn();
 }
