@@ -1524,7 +1524,9 @@ function materialLines(p, cu, N, mg) {
 function linesFor(i) {
   const p = S.result[i], cu = S.custom[i]; if (!p || !cu) return [];
   const mg = p.magasin || 'Leroy Merlin';
-  const out = p.liste.map((it) => ({ qte: it.qte, article: it.article || '', enseigne: it.enseigne || '', recherche: it.recherche || it.article || '', detail: it.detail || '', prix: num(it.prix) }));
+  const out = p.liste.filter((it) => !(p.edited && it.detail === 'caisson du commerce'))
+    .map((it) => ({ qte: it.qte, article: it.article || '', enseigne: it.enseigne || '', recherche: it.recherche || it.article || '', detail: it.detail || '', prix: num(it.prix) }));
+  if (p.edited) out.push(...caissonLines(p));
   const N = noticeFor(p, cu), h = handleById(cu.poignee), feet = feetById(cu.pieds);
   out.push(...materialLines(p, cu, N, mg));
   if (N.hw.H && h.prix > 0) out.push({ qte: N.hw.H, article: hwName('H', cu), enseigne: mg, recherche: `poignée meuble ${h.nom} ${hfinById(cu.hfin).nom}`, detail: 'votre choix, repère H', prix: N.hw.H * h.prix });
@@ -2413,8 +2415,69 @@ function placeSpots(force) {
     b.classList.toggle('on', !!sel);
   });
 }
-/* Handles to pull the furniture wider or taller. Only for a piece made of cut panels: one made of ready-made
-   cabinets follows the sizes of those cabinets, so stretching it would quietly make the shopping list wrong.
+/* ---- ready-made cabinets: the same catalogue the engine used, so a pulled handle can only land on
+   sizes that really exist in the shop, and the shopping list is rewritten to match ---- */
+const CT = 18;
+const caisRef = (sys, w, h) => `${sys.nom} caisson ${Math.round(w / 10)} x ${Math.round(sys.depth / 10)} x ${Math.round(h / 10)} cm`;
+function caisSys(m) {
+  const refs = (m.colonnes || []).map((c) => (c && c.ref) || '').filter(Boolean); if (!refs.length) return null;
+  return ((ENG && ENG.SYSTEMS) || []).find((s) => refs.some((r) => r.indexOf(s.nom) === 0)) || null;
+}
+const nearest = (list, v) => list.reduce((b, x) => Math.abs(x - v) < Math.abs(b - v) ? x : b, list[0]);
+function caisState(o) {
+  const m = o.m, sys = caisSys(m); if (!sys) return null;
+  const legs = num(m.pieds_mm), topT = num(m.epaisseur_plateau_mm) || CT;
+  const heights = [...new Set(sys.sizes.map((x) => x[1]))].sort((a, b) => a - b);
+  const h = nearest(heights, Math.round(num(m.hauteur_mm) - legs - topT));
+  const widthsAt = (hh) => [...new Set(sys.sizes.filter((x) => x[1] === hh).map((x) => x[0]))].sort((a, b) => a - b);
+  const ws = (o.L.boxes || []).map((b) => nearest(widthsAt(h), Math.round(b.x1 - b.x0)));
+  return { sys, legs, topT, h, heights, widthsAt, widths: widthsAt(h), ws: ws.length ? ws : [widthsAt(h)[0]] };
+}
+// the closest total a whole number of ready-made cabinets can reach, with as few of them as possible
+function caisFit(widths, target, nmax) {
+  let best = null;
+  const walk = (i, n, sum, use) => {
+    if (n) { const d = Math.abs(sum - target); if (!best || d < best.d - .5 || (Math.abs(d - best.d) < .5 && n < best.n)) best = { d, sum, n, use: use.slice() }; }
+    if (i >= widths.length || n >= nmax || sum > target + widths[widths.length - 1]) return;
+    walk(i + 1, n, sum, use);
+    use.push(widths[i]); walk(i, n + 1, sum + widths[i], use); use.pop();
+  };
+  walk(0, 0, 0, []);
+  return best || { sum: widths[0], n: 1, use: [widths[0]] };
+}
+function caisWrite(m, g, ws, h, src) {
+  const base = (src || []).filter((c) => c && !c.vide);
+  const model = base.length ? base : [{ cases: [{ hauteur_mm: 1, type: 'ouvert' }] }];
+  m.colonnes = ws.map((w, i) => {
+    const c = JSON.parse(JSON.stringify(model[Math.min(i, model.length - 1)]));
+    c.largeur_mm = w - 2 * CT; c.ref = caisRef(g.sys, w, h); return c;
+  });
+  m.largeur_mm = ws.reduce((a, w) => a + w, 0);
+  m.hauteur_mm = g.legs + h + g.topT;
+}
+const caisTxt = (ws) => { const c = new Map(); ws.forEach((w) => c.set(w, (c.get(w) || 0) + 1));
+  return [...c].map(([w, n]) => `${n} caisson${n > 1 ? 's' : ''} de ${Math.round(w / 10)} cm`).join(' + '); };
+/* The shopping lines for the cabinets are recomputed from the plan once it has been edited: the list the
+   engine wrote no longer matches a piece that has been pulled wider or had a column added. */
+function caissonLines(p) {
+  const g = new Map();
+  (p.modules || []).forEach((m, mi) => {
+    if (m.fabrication !== 'caissons') return;
+    const sys = caisSys(m); if (!sys) return;
+    const L = layoutModule(m, zoneFor(m, mi));
+    const h = Math.round(num(m.hauteur_mm) - num(m.pieds_mm) - (num(m.epaisseur_plateau_mm) || CT));
+    (L.boxes || []).forEach((b) => { const w = Math.round(b.x1 - b.x0), k = `${sys.id}|${w}|${h}`;
+      const e = g.get(k) || { sys, w, h, n: 0 }; e.n++; g.set(k, e); });
+  });
+  return [...g.values()].map((e) => { const d = Math.round(e.sys.depth / 10), w = Math.round(e.w / 10), h = Math.round(e.h / 10);
+    return { qte: e.n, article: caisRef(e.sys, e.w, e.h), enseigne: e.sys.shop, detail: 'caisson du commerce',
+      recherche: `${e.sys.nom.replace(/^(IKEA|Castorama|Leroy Merlin)\s+/, '')} ${w}x${d}x${h}`,
+      prix: e.n * Math.round(e.sys.k[0] + e.w * e.h * e.sys.k[1]) }; });
+}
+
+/* Handles to pull the furniture wider or taller, on every proposal. On a piece made of cut panels the size
+   follows the finger to the nearest 10 mm; on one made of ready-made cabinets it clicks onto the sizes the
+   shop really sells, and the shopping list is rewritten to those cabinets.
    While pulling, the app says how far it now goes past the zone that was drawn on the photo. */
 const GRIP = { items: [], key: '' };
 function buildGrips() {
@@ -2422,8 +2485,11 @@ function buildGrips() {
   const box = $('#grips'); box.innerHTML = ''; GRIP.items = []; GRIP.key = ''; $('#gripInfo').hidden = true;
   if (!E.inited || S.view !== '3d' || S.selCell) return;
   (E.mods || []).forEach((o) => {
-    if (o.m.fabrication === 'caissons') return;
+    const cais = o.m.fabrication === 'caissons';
+    if (cais && !caisSys(o.m)) return;                                   // no catalogue to snap to: better no handle than a wrong list
+    const knee = (o.m.colonnes || []).some((c) => c && c.vide);           // a desk's knee hole sets the width
     [['w', 'Élargir ou rétrécir'], ['h', 'Monter ou baisser le dessus']].forEach(([axis, label]) => {
+      if (axis === 'w' && cais && knee) return;
       const b = document.createElement('button'); b.type = 'button'; b.className = 'grip grip-' + axis; b.setAttribute('aria-label', label);
       b.innerHTML = axis === 'w' ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg>'
         : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M8 7l4-4 4 4M8 17l4 4 4-4"/></svg>';
@@ -2454,6 +2520,7 @@ function gripDrag(b, o, axis) {
     o.G.localToWorld(p0).project(E.cam); o.G.localToWorld(p1).project(E.cam);
     const ax = (p1.x - p0.x) / 2 * rc.width, ay = -(p1.y - p0.y) / 2 * rc.height, len = Math.hypot(ax, ay) || 1;
     st = { x: e.clientX, y: e.clientY, v0: mmOf(), ux: ax / len, uy: ay / len, pxPer100: len }; GRIP.dragging = true;
+    if (o.m.fabrication === 'caissons') { st.g = caisState(o); st.cols = JSON.parse(JSON.stringify(o.m.colonnes || [])); }
     if (E.setFast) E.setFast(true);
     b.classList.add('on');
   });
@@ -2461,9 +2528,23 @@ function gripDrag(b, o, axis) {
     if (!st) return;
     const d = ((e.clientX - st.x) * st.ux + (e.clientY - st.y) * st.uy) / st.pxPer100 * 100;
     const lim = axis === 'w' ? [400, 4000] : [250, 2600];
-    const v = clamp(Math.round((st.v0 + d) / 10) * 10, lim[0], lim[1]);
-    if (axis === 'w') o.m.largeur_mm = v; else o.m.hauteur_mm = v;
-    gripInfo(o, axis, v); gripDraw();
+    const want = clamp(st.v0 + d, lim[0], lim[1]);
+    let v, note = '';
+    if (st.g) {                                            // ready-made cabinets: only sizes that exist in the shop
+      const g = st.g;
+      if (axis === 'w') {
+        const fit = caisFit(g.widths, want, 10);
+        caisWrite(o.m, g, fit.use, g.h, st.cols); v = fit.sum; note = caisTxt(fit.use);
+      } else {
+        const h = nearest(g.heights, want - g.legs - g.topT), wa = g.widthsAt(h);
+        const ws = g.ws.map((w) => nearest(wa, w));
+        caisWrite(o.m, g, ws, h, st.cols); v = g.legs + h + g.topT; note = caisTxt(ws);
+      }
+    } else {
+      v = Math.round(want / 10) * 10;
+      if (axis === 'w') o.m.largeur_mm = v; else o.m.hauteur_mm = v;
+    }
+    gripInfo(o, axis, v, note); gripDraw();
   });
   const end = () => {
     if (!st) return; st = null; GRIP.dragging = false; b.classList.remove('on');
@@ -2476,11 +2557,13 @@ function gripDrag(b, o, axis) {
 }
 let gripRaf = 0;
 function gripDraw() { if (gripRaf) return; gripRaf = requestAnimationFrame(() => { gripRaf = 0; build3D(); E.dirty = true; placeGrips(true); }); }
-function gripInfo(o, axis, v) {
+function gripInfo(o, axis, v, note) {
   const z = o.z || DEFZ, max = axis === 'w' ? pos(z.A) : pos(z.B), el = $('#gripInfo');
-  const over = max ? v - max : 0;
+  const over = max ? Math.round(v - max) : 0;
   el.hidden = false; el.classList.toggle('over', over > 0);
-  el.textContent = `${axis === 'w' ? 'Largeur' : 'Hauteur'} ${v.toLocaleString('fr-FR')} mm` + (max ? (over > 0 ? ` · dépasse la zone de ${over.toLocaleString('fr-FR')} mm` : ` · zone ${max.toLocaleString('fr-FR')} mm`) : '');
+  el.textContent = `${axis === 'w' ? 'Largeur' : 'Hauteur'} ${Math.round(v).toLocaleString('fr-FR')} mm`
+    + (max ? (over > 0 ? ` · dépasse la zone de ${over.toLocaleString('fr-FR')} mm` : ` · zone ${max.toLocaleString('fr-FR')} mm`) : '')
+    + (note ? ` · ${note}` : '');
 }
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
@@ -2857,7 +2940,7 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(-1);
-if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell };
+if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell, linesFor, caisFit, caisSys, caissonLines };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
   const id = new URLSearchParams(location.search).get('shot'); if (!id) return;
