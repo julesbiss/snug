@@ -733,7 +733,7 @@ function layoutModule(m, z) {
       let px = x;
       for (let pi = 0; pi < np; pi++) {
         const o = parts ? parts[pi] : k, type = TYPES.includes(o && o.type) ? o.type : 'ouvert';
-        cells.push({ x: px, y, w: pw, h: ch, type, contenu: (o && o.contenu) || '', rod: !!(o && o.tringle), key: `${ci}-${ri}-${pi}`, col: ci, ncols: cols.length });
+        cells.push({ x: px, y, w: pw, h: ch, type, contenu: (o && o.contenu) || '', rod: !!(o && o.tringle), inner: (o && o.inner) || null, key: `${ci}-${ri}-${pi}`, col: ci, ncols: cols.length });
         px += pw; if (pi < np - 1) { vdivs.push({ x: px, y, h: ch }); px += t; }
       }
       y += ch; if (ri < cases.length - 1) { shelves.push({ x, w: cw, y }); y += t; }
@@ -957,6 +957,9 @@ function productShot() {
 }
 const PROJ_EN = { tv: 'a low TV cabinet', dressing: 'a wardrobe', biblio: 'a bookcase', escalier: 'an under-stairs storage unit', bureau: 'a desk with drawers', autre: 'a storage unit' };
 $('#realClose').onclick = () => { $('#realWait').hidden = true; };
+$('#manBtn').onclick = () => { S.manikin = !S.manikin; try { localStorage.setItem('snug.manikin', S.manikin ? '1' : ''); } catch {} updateManBtn(); if (S.view === '3d' && E.inited) { build3D(); if (!E.userView) frame(); E.dirty = true; } else refreshView(); };
+function updateManBtn() { const b = $('#manBtn'); b.setAttribute('aria-pressed', String(!!S.manikin)); b.hidden = S.view !== '3d'; }
+try { S.manikin = !!localStorage.getItem('snug.manikin'); } catch {}
 $('#adjReset').onclick = adjReset;
 async function makeReal() {
   const key = realKey();
@@ -1090,6 +1093,8 @@ function cellRules(L, c) {
     caisse: h < 140 ? `Case trop basse pour une caisse : ${mm(h)}, il faut 140 mm minimum.` : D < 250 ? `Meuble pas assez profond pour une caisse : ${mm(D)}, il faut 250 mm.` : '',
     abattant: h < 200 ? `Case trop basse pour un abattant : ${mm(h)}, il faut 200 mm minimum.` : h > 800 ? `Case trop haute pour un abattant : ${mm(h)}, 800 mm maximum.` : '',
     tringle: h < 900 ? `Il faut au moins 900 mm de haut pour une penderie : cette case fait ${mm(h)}. Fusionnez-la avec la case du dessus ou du dessous.` : D < 480 ? `Il faut au moins 480 mm de profondeur pour une penderie : le meuble fait ${mm(D)}.` : '',
+    shelfIn: h < 420 ? `Case trop basse pour une étagère intérieure : ${mm(h)}, il en faut 420.` : '',
+    drawerIn: h < 320 ? `Case trop basse pour un tiroir caché : ${mm(h)}, il en faut 320.` : D < 320 ? `Meuble pas assez profond pour un tiroir caché : ${mm(D)}, il en faut 320.` : '',
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
   };
 }
@@ -1110,7 +1115,7 @@ function renderCell() {
   const { col, k, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
   const where = n === 1 ? 'seule case' : X.k === col.cases[0] ? 'en bas' : X.k === col.cases[n - 1] ? 'en haut' : `case ${S.selCell.ri + 1} sur ${n}`;
   const btn = (id, label, extra = '') => `<button type="button" class="cbtn${extra}" data-op="${id}">${label}</button>`;
-  const ri = S.selCell.ri, ci = S.selCell.ci, nc = X.m.colonnes.length;
+  const ri = S.selCell.ri, ci = S.selCell.ci, nc = X.m.colonnes.length, inn = X.o.inner || {};
   el.innerHTML = `<div class="chead"><div><b>Colonne ${ci + 1} · ${where}${X.np > 1 ? ` · partie ${(S.selCell.pi || 0) + 1} sur ${X.np}` : ''}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${X.o.contenu ? ' · ' + String(X.o.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
     <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>
     <p class="clab">Façade</p>
@@ -1120,6 +1125,9 @@ function renderCell() {
       ${btn('splitH', 'Diviser en largeur', c.w >= 320 && X.np < 3 ? '' : ' no')}${btn('mergeH', 'Réunir en largeur', X.np > 1 ? '' : ' no')}
       ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}
       ${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}</div>
+    <p class="clab">Dans la case${X.o.type === 'ouvert' ? '' : ' · derrière la façade'}</p>
+    <div class="chrow"><button type="button" class="cbtn" data-op="shelfIn-">−</button><b class="chval">${inn.shelves || 0} étagère${(inn.shelves || 0) > 1 ? 's' : ''}</b><button type="button" class="cbtn${rules.shelfIn ? ' no' : ''}" data-op="shelfIn+">+</button></div>
+    <div class="chrow"><button type="button" class="cbtn" data-op="drawerIn-">−</button><b class="chval">${inn.drawers || 0} tiroir${(inn.drawers || 0) > 1 ? 's' : ''} caché${(inn.drawers || 0) > 1 ? 's' : ''}</b><button type="button" class="cbtn${rules.drawerIn ? ' no' : ''}" data-op="drawerIn+">+</button></div>
     <p class="clab">Hauteur de la case</p>
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
     <p class="clab">Toute la colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
@@ -1141,7 +1149,16 @@ function cellOp(op) {
   if ((op === 'mergeDown' || op === 'down') && ref.ri <= 0) return say('Cette case est déjà tout en bas de sa colonne.');
   if (op === 'left' && ref.ci <= 0) return say('Cette colonne est déjà la première à gauche.');
   if (op === 'right' && ref.ci >= nc0 - 1) return say('Cette colonne est déjà la dernière à droite.');
-  if (op.startsWith('type:')) { const t = op.slice(5); if (rules[t]) return say(rules[t]); o.type = t; if (t !== 'ouvert' && o.contenu === 'rangement') o.contenu = ''; }
+  if (op.startsWith('shelfIn') || op.startsWith('drawerIn')) {
+    const key = op.startsWith('shelfIn') ? 'shelves' : 'drawers', plus = op.endsWith('+'), max = key === 'shelves' ? 5 : 4;
+    const inn = o.inner || (o.inner = { shelves: 0, drawers: 0 }), cur = clamp(Math.round(num(inn[key])), 0, max);
+    if (plus && rules[key === 'shelves' ? 'shelfIn' : 'drawerIn']) return say(rules[key === 'shelves' ? 'shelfIn' : 'drawerIn']);
+    if (plus && cur >= max) return say(`Pas plus de ${max} ${key === 'shelves' ? 'étagères' : 'tiroirs cachés'} dans une case.`);
+    if (!plus && cur <= 0) return say(`Il n’y a pas de ${key === 'shelves' ? 'étagère' : 'tiroir caché'} à retirer.`);
+    inn[key] = cur + (plus ? 1 : -1);
+    if (plus && key === 'drawers' && innerPieces({ ...c, inner: inn }, L).filter((q) => q.kind === 'drawer').length < inn[key]) { inn[key] = cur; return say('Plus de place pour un tiroir de plus dans cette case.'); }
+    if (!inn.shelves && !inn.drawers) delete o.inner;
+  } else if (op.startsWith('type:')) { const t = op.slice(5); if (rules[t]) return say(rules[t]); o.type = t; if (t !== 'ouvert' && o.contenu === 'rangement') o.contenu = ''; }
   else if (op === 'tringle') { if (!o.tringle && rules.tringle) return say(rules.tringle); o.tringle = !o.tringle; if (o.tringle && !o.contenu) o.contenu = 'penderie'; }
   else if (op === 'split') { if (rules.split) return say(rules.split); const h = (num(k.hauteur_mm) - T) / 2; const copy = { ...k, hauteur_mm: h, tringle: false }; if (k.parts) copy.parts = k.parts.map((x) => ({ ...x })); cs.splice(ref.ri, 1, copy, { hauteur_mm: h, type: 'ouvert', contenu: '' }); }
   else if (op === 'mergeUp' || op === 'mergeDown') {
@@ -1334,6 +1351,20 @@ function noticeFor(p, cu) {
       }
     }
     (L.vdivs || []).forEach((v, i) => vdv.push(P(`Séparation verticale ${i + 1}`, mmTxt(v.h, D - 26, t), [v.x, v.y, 6, t, v.h, D - 26], 'struct', { v })));
+    const inns = [];
+    L.cells.forEach((c) => innerPieces(c, L).forEach((o) => {
+      if (o.kind === 'shelf') inns.push(P(`Étagère intérieure ${inns.length + 1}`, mmTxt(o.w, o.d, t), [o.x, o.y, o.z, o.w, t, o.d], 'struct', { o }));
+      else inns.push(P(`Tiroir caché ${inns.length + 1} (5 pièces)`, mmTxt(o.w, o.d, o.h), [o.x, o.y, o.z, o.w, o.h, o.d], 'struct', { o }));
+    }));
+    if (inns.length) {
+      const nd = inns.filter((x) => /Tiroir/.test(x.nom)).length, ns = inns.length - nd;
+      H('A', ns * 4 + nd * 8); if (nd) { H('G', nd); H('B', nd * 4); }
+      st({ title: 'Aménager l’intérieur', add: inns, explode: [0, 0, 300], hw: [['A', ns * 4 + nd * 8]].concat(nd ? [['G', nd], ['B', nd * 4]] : []), tools: ['Foret bois 3 mm'], extra: legExtra(false),
+        markers: inns.flatMap((x) => [[x.o.x + 6, 1], [x.o.x + x.o.w - 6, -1]].map(([xx, sx]) => ({ p: [xx, x.o.y + (x.o.kind === 'shelf' ? t / 2 : x.o.h / 2), x.o.z + x.o.d / 2], c: 'A', d: [sx, 0, 0] }))),
+        text: [ns ? `Étagères intérieures : ${inns.filter((x) => x.o.kind === 'shelf').map((x) => `${x.code} à ${R0(x.o.y - L.y0)} mm au-dessus du fond`).join(', ')}. Vissez chacune avec 2 vis A de chaque côté.` : '',
+          nd ? `Tiroirs cachés : ${inns.filter((x) => x.o.kind === 'drawer').map((x) => x.code).join(', ')}. Assemblez chaque caisson (fond, 2 côtés, arrière, façade) avec 2 vis A par angle, puis posez-le sur une paire de coulisses G vissées à ${R0(80)} mm du fond de la case.` : '',
+          'Ces éléments restent derrière la façade : laissez 3 mm de jeu pour que la porte ferme sans frotter.'].filter(Boolean) });
+    }
     if (vdv.length) { // an upright that divides one case in its width
       H('A', vdv.length * 4);
       st({ title: 'Poser les séparations verticales', add: vdv, explode: [0, 0, 260], hw: [['A', vdv.length * 4]], tools: ['Foret bois 3 mm'], extra: legExtra(false),
@@ -2017,7 +2048,7 @@ function init3D() {
       const ext = E.ext || { w: 2, h: 2 }; // never let the furniture be pushed out of sight
       E.orbit.target.x = clamp(E.orbit.target.x, -ext.w, ext.w); E.orbit.target.y = clamp(E.orbit.target.y, -.2, ext.h + .6); E.orbit.target.z = clamp(E.orbit.target.z, -1, 1.2);
     };
-    const fast = (on) => { if (E.fast === on) return; E.fast = on; if (E.key) E.key.shadow.autoUpdate = !on; E.r.setPixelRatio(on ? 1 : Math.min(2, window.devicePixelRatio || 1)); E.dirty = true; };
+    const fast = E.setFast = (on) => { if (E.fast === on) return; E.fast = on; if (E.key) E.key.shadow.autoUpdate = !on; E.r.setPixelRatio(on ? 1 : Math.min(2, window.devicePixelRatio || 1)); E.dirty = true; };
     cv.addEventListener('pointerdown', (e) => {
       $('#hint3d').classList.add('gone'); E.rTo = null; E.thTo = null; cv.setPointerCapture(e.pointerId);
       ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); fast(true);
@@ -2097,6 +2128,7 @@ function buildModule(G, L, mi, M, feet) {
   L.dividers.forEach((x) => bx(L.divT, L.y1 - L.y0, D - 6, M.mS, x, L.y0, 6, G));
   L.shelves.forEach((s) => bx(s.w, t, D - 26, M.mS, s.x, s.y, 6, G));
   bx(W, L.topT, D + 12, M.mP, 0, H - L.topT, 0, G);
+  L.cells.forEach((c) => addInner(G, c, L, M));
   frontsOf(L, mi).forEach((f) => addFront(G, f, L, M));
   addDetails(G, L); addProps(G, L);
   // contact shading inside every case: back panel and floor of the case
@@ -2118,6 +2150,21 @@ function buildModule(G, L, mi, M, feet) {
       box.position.set(c.x + c.w / 2, c.y + c.h / 2, (D + 30) / 2 + 2); G.add(box);
     }
   });
+}
+/* A plain 1.80 m figure, drawn to the millimetre: head at 1800, eyes at about 1650, hand at 750.
+   Deliberately featureless and matte, so it gives the scale without competing with the furniture. */
+function silhouette(root, x, depth) {
+  const m = E.mats.manikin || (E.mats.manikin = new THREE.MeshStandardMaterial({ color: 0xA9A49C, roughness: .85, metalness: 0 }));
+  const g = new THREE.Group(); g.position.set(x, 0, Math.max(240, depth * .5)); root.add(g);
+  const part = (w, h, d, px, py, pz, geo) => { const me = new THREE.Mesh(geo || new THREE.BoxGeometry(w, h, d), m); me.position.set(px, py + h / 2, pz); me.castShadow = true; me.receiveShadow = true; g.add(me); return me; };
+  [-105, 105].forEach((dx) => part(120, 900, 150, dx, 0, 0));          // legs, floor to 900
+  part(380, 560, 200, 0, 880, 0);                                      // body, 880 to 1440
+  [-245, 245].forEach((dx) => { const a = part(95, 560, 110, dx, 870, 0); a.rotation.z = dx > 0 ? .04 : -.04; }); // arms
+  part(150, 130, 150, 0, 1430, 0);                                     // neck
+  const head = new THREE.Mesh(new THREE.SphereGeometry(115, 20, 14), m); head.position.set(0, 1685, 0); head.scale.set(1, 1.15, 1.05); head.castShadow = true; g.add(head); // top at 1800
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(900, 700), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(contactCanvas()), transparent: true, depthWrite: false, opacity: .5 }));
+  sh.userData.own = true; sh.rotation.x = -Math.PI / 2; sh.position.set(0, 1.5, 0); g.add(sh);
+  return g;
 }
 function matsFor(cu) { return { mS: mat(cu.structure), mF: mat(cu.facades), mP: mat(cu.plateau), mH: mat('h:' + cu.hfin), crate: mat('pin'), h: handleById(cu.poignee) }; }
 function addFront(G, f, L, M) {
@@ -2182,6 +2229,31 @@ function addProps(G, L) {
     const arm = box(10, 8, 160, grey, x + 390, y + 70, z + 90); arm.rotation.y = .25;
   }
 }
+/* What goes inside a cupboard: hidden drawers at the bottom, shelves above, the rod on top. Drawers behind a
+   full-height door are how a dressing is really built, so they are drawn inside, visible when the door opens. */
+function innerPieces(c, L) {
+  const inn = c.inner; if (!inn) return [];
+  const nD = clamp(Math.round(num(inn.drawers)), 0, 4), nS = clamp(Math.round(num(inn.shelves)), 0, 5);
+  if (!nD && !nS) return [];
+  const t = L.t, D = L.D, out = [], x = c.x + 14, w = c.w - 28, d = Math.max(150, D - 90), z = 24;
+  const avail = c.h - 24, part = nD && nS ? .58 : nD ? .94 : 0;
+  const dh = nD ? clamp(Math.min(230, avail * part / nD) - 8, 85, 230) : 0;
+  let y = c.y + 10;
+  for (let i = 0; i < nD; i++) { out.push({ kind: 'drawer', x, y, w, h: dh, d, z, n: i + 1 }); y += dh + 10; }
+  const top = c.y + c.h - (c.rod ? 150 : 16), room = top - y;
+  if (nS && room > (nS + 1) * 90) { const gap = room / (nS + 1); for (let i = 1; i <= nS; i++) out.push({ kind: 'shelf', x, y: y + gap * i, w, h: t, d: D - 40, z: 12, n: i }); }
+  return out;
+}
+function addInner(G, c, L, M) {
+  const th = 14;
+  innerPieces(c, L).forEach((o) => {
+    if (o.kind === 'shelf') { bx(o.w, o.h, o.d, M.mS, o.x, o.y, o.z, G); return; }
+    bx(o.w, th, o.d, M.mS, o.x, o.y, o.z, G);                                  // bottom
+    bx(th, o.h, o.d, M.mS, o.x, o.y, o.z, G); bx(th, o.h, o.d, M.mS, o.x + o.w - th, o.y, o.z, G); // sides
+    bx(o.w, o.h, th, M.mS, o.x, o.y, o.z, G);                                   // back
+    bx(o.w, o.h, 16, M.mF, o.x, o.y, o.z + o.d - 16, G);                        // front, inside the cupboard
+  });
+}
 function addDetails(G, L) {
   L.cells.filter((c) => c.rod).forEach((c) => {
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, c.w - 8, 16), mat('h:chrome')); rod.rotation.z = Math.PI / 2; rod.position.set(c.x + c.w / 2, c.y + c.h - 60, L.D / 2); rod.castShadow = true; G.add(rod);
@@ -2220,12 +2292,12 @@ function placeModules(p) {
 function build3D() {
   if (!E.inited) return; const p = currentProp(), cu = S.custom[S.active]; if (!p || !cu) return;
   while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
-  E.picks = []; E.opens = []; E.cellPicks = []; REG = null;
+  E.picks = []; E.opens = []; E.cellPicks = []; E.mods = []; REG = null;
   E.scene.background = lin('#DAD5CE');
   const M = matsFor(cu), feet = feetById(cu.pieds);
   let maxX = 0, maxY = 0, maxD = 0, tvMod = null;
   placeModules(p).forEach((o) => {
-    const L = o.L, G = new THREE.Group(); G.position.set(o.x, o.y, 16); E.root.add(G);
+    const L = o.L, G = new THREE.Group(); G.position.set(o.x, o.y, 16); E.root.add(G); E.mods.push({ mi: o.mi, G, L, m: o.m, z: o.z });
     maxX = Math.max(maxX, o.x + L.W); maxY = Math.max(maxY, o.y + L.H); maxD = Math.max(maxD, L.D);
     buildModule(G, L, o.mi, M, feet);
     if (!L.raised && (!tvMod || L.W > tvMod.L.W)) tvMod = { G, L };
@@ -2240,11 +2312,13 @@ function build3D() {
     [-tw * .36, tw * .36].forEach((x) => { const f = new THREE.Mesh(new THREE.BoxGeometry(14, 70, 180), black); f.position.set(x, -35, 0); f.castShadow = true; tv.add(f); });
     maxY = Math.max(maxY, L.H + 70 + th);
   }
-  E.root.position.set(-maxX / 2 * .001, 0, 0);
-  E.ctr = new THREE.Vector3(0, maxY / 2 * .001, maxD / 2 * .001);
+  if (S.manikin) silhouette(E.root, maxX + 420, maxD); // a 1.80 m figure beside the furniture: the only honest way to feel its size
+  E.root.position.set((-maxX / 2 - (S.manikin ? 620 : 0)) * .001, 0, 0);
+  const hAll = Math.max(maxY, S.manikin ? 1850 : 0); // the figure is taller than most furniture: the frame must hold both
+  E.ctr = new THREE.Vector3(0, hAll / 2 * .001, maxD / 2 * .001);
   if (!E.userView) E.orbit.target.copy(E.ctr); // after a change, keep where the user was looking
-  E.ext = { w: maxX * .001, h: maxY * .001 }; E.dirty = true; E.envK = null;
-  updateOpenBtn(); buildSpots();
+  E.ext = { w: (maxX + (S.manikin ? 1400 : 0)) * .001, h: hAll * .001 }; E.dirty = true; E.envK = null;
+  updateOpenBtn(); buildSpots(); buildGrips();
 }
 function frame() {
   if (!E.ext) return; E.userView = false; const fov = E.cam.fov * Math.PI / 180;
@@ -2339,6 +2413,75 @@ function placeSpots(force) {
     b.classList.toggle('on', !!sel);
   });
 }
+/* Handles to pull the furniture wider or taller. Only for a piece made of cut panels: one made of ready-made
+   cabinets follows the sizes of those cabinets, so stretching it would quietly make the shopping list wrong.
+   While pulling, the app says how far it now goes past the zone that was drawn on the photo. */
+const GRIP = { items: [], key: '' };
+function buildGrips() {
+  if (GRIP.dragging) { placeGrips(true); return; } // never rebuild the handle under the finger: the drag would stop dead
+  const box = $('#grips'); box.innerHTML = ''; GRIP.items = []; GRIP.key = ''; $('#gripInfo').hidden = true;
+  if (!E.inited || S.view !== '3d' || S.selCell) return;
+  (E.mods || []).forEach((o) => {
+    if (o.m.fabrication === 'caissons') return;
+    [['w', 'Élargir ou rétrécir'], ['h', 'Monter ou baisser le dessus']].forEach(([axis, label]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'grip grip-' + axis; b.setAttribute('aria-label', label);
+      b.innerHTML = axis === 'w' ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg>'
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M8 7l4-4 4 4M8 17l4 4 4-4"/></svg>';
+      gripDrag(b, o, axis); box.appendChild(b); GRIP.items.push({ b, o, axis });
+    });
+  });
+  placeGrips(true);
+}
+function gripPoint(o, axis) { const L = o.L; return new THREE.Vector3(axis === 'w' ? L.W + 90 : L.W / 2, axis === 'w' ? L.H / 2 : L.H + 90, L.D); }
+function placeGrips(force) {
+  if (!GRIP.items.length || !E.cam) return;
+  const cv = $('#cv3d'), W = cv.clientWidth, H = cv.clientHeight, key = E.camKey + '|' + W + '|' + H;
+  if (!force && key === GRIP.key) return; GRIP.key = key;
+  GRIP.items.forEach(({ b, o, axis }) => {
+    const v = gripPoint(o, axis); o.G.localToWorld(v); v.project(E.cam);
+    const x = (v.x + 1) / 2 * W, y = (1 - v.y) / 2 * H, on = v.z < 1 && x > -20 && x < W + 20 && y > -20 && y < H + 20;
+    b.style.display = on ? '' : 'none';
+    if (on) b.style.transform = `translate3d(${Math.round(clamp(x, 16, W - 16))}px, ${Math.round(clamp(y, 16, H - 16))}px, 0) translate(-50%, -50%)`;
+  });
+}
+function gripDrag(b, o, axis) {
+  let st = null;
+  const mmOf = () => (axis === 'w' ? num(o.m.largeur_mm) || o.L.W : num(o.m.hauteur_mm) || o.L.H);
+  b.addEventListener('pointerdown', (e) => {
+    e.stopPropagation(); b.setPointerCapture(e.pointerId);
+    const cv = $('#cv3d'), rc = cv.getBoundingClientRect(), L = o.L;
+    const p0 = new THREE.Vector3(0, 0, L.D), p1 = new THREE.Vector3(axis === 'w' ? 100 : 0, axis === 'w' ? 0 : 100, L.D);
+    o.G.localToWorld(p0).project(E.cam); o.G.localToWorld(p1).project(E.cam);
+    const ax = (p1.x - p0.x) / 2 * rc.width, ay = -(p1.y - p0.y) / 2 * rc.height, len = Math.hypot(ax, ay) || 1;
+    st = { x: e.clientX, y: e.clientY, v0: mmOf(), ux: ax / len, uy: ay / len, pxPer100: len }; GRIP.dragging = true;
+    if (E.setFast) E.setFast(true);
+    b.classList.add('on');
+  });
+  b.addEventListener('pointermove', (e) => {
+    if (!st) return;
+    const d = ((e.clientX - st.x) * st.ux + (e.clientY - st.y) * st.uy) / st.pxPer100 * 100;
+    const lim = axis === 'w' ? [400, 4000] : [250, 2600];
+    const v = clamp(Math.round((st.v0 + d) / 10) * 10, lim[0], lim[1]);
+    if (axis === 'w') o.m.largeur_mm = v; else o.m.hauteur_mm = v;
+    gripInfo(o, axis, v); gripDraw();
+  });
+  const end = () => {
+    if (!st) return; st = null; GRIP.dragging = false; b.classList.remove('on');
+    if (E.setFast) E.setFast(false);
+    const p = currentProp(); if (p) p.edited = true;
+    refreshAll(); build3D(); renderTabs(); renderWarn(p); E.dirty = true; placeGrips(true);
+    setTimeout(() => { $('#gripInfo').hidden = true; }, 2600);
+  };
+  b.addEventListener('pointerup', end); b.addEventListener('pointercancel', end);
+}
+let gripRaf = 0;
+function gripDraw() { if (gripRaf) return; gripRaf = requestAnimationFrame(() => { gripRaf = 0; build3D(); E.dirty = true; placeGrips(true); }); }
+function gripInfo(o, axis, v) {
+  const z = o.z || DEFZ, max = axis === 'w' ? pos(z.A) : pos(z.B), el = $('#gripInfo');
+  const over = max ? v - max : 0;
+  el.hidden = false; el.classList.toggle('over', over > 0);
+  el.textContent = `${axis === 'w' ? 'Largeur' : 'Hauteur'} ${v.toLocaleString('fr-FR')} mm` + (max ? (over > 0 ? ` · dépasse la zone de ${over.toLocaleString('fr-FR')} mm` : ` · zone ${max.toLocaleString('fr-FR')} mm`) : '');
+}
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
   if (E.thTo !== undefined && E.thTo !== null) { const o = E.orbit; o.theta += (E.thTo - o.theta) * .12; if (Math.abs(E.thTo - o.theta) < .002) { o.theta = E.thTo; E.thTo = null; } }
@@ -2347,7 +2490,7 @@ function loop() {
   const ob = E.orbit, sp = Math.sin(ob.phi), key = [ob.theta, ob.phi, ob.r, ob.target.x, ob.target.y, ob.target.z].map((v) => v.toFixed(4)).join();
   if (moving || key !== E.camKey) { E.dirty = true; E.camKey = key; }
   E.cam.position.set(ob.target.x + ob.r * sp * Math.sin(ob.theta), ob.target.y + ob.r * Math.cos(ob.phi), ob.target.z + ob.r * sp * Math.cos(ob.theta));
-  E.cam.lookAt(ob.target); renderFrame(); placeSpots();
+  E.cam.lookAt(ob.target); renderFrame(); placeSpots(); placeGrips();
 }
 function startLoop() { if (!E.running && E.inited) { E.running = true; requestAnimationFrame(loop); } }
 function stopLoop() { E.running = false; }
@@ -2355,7 +2498,7 @@ function renderView() {
   if (!E.ok) S.view = 'photo';
   $('#viewSeg').hidden = !E.ok;
   document.querySelectorAll('#viewSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
-  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d'; $('#hint3d').hidden = S.view !== '3d'; $('#adjHint').hidden = S.view !== 'photo'; if (S.view === 'photo') adjShow();
+  $('#stage3d').hidden = S.view !== '3d'; $('#stagePhoto').hidden = S.view !== 'photo'; $('#recenter').hidden = S.view !== '3d'; $('#hint3d').hidden = S.view !== '3d'; updateManBtn(); $('#adjHint').hidden = S.view !== 'photo'; if (S.view === 'photo') adjShow();
   if (S.view === '3d') {
     init3D(); if (!E.ok) return renderView();
     resize3D(); build3D();
