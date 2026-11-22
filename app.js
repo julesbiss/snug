@@ -1221,6 +1221,20 @@ function cellOp(op) {
 
 /* The warnings of a proposal. When the user asked for ready-made cabinets and none fits, the first card says which
    measure blocks and offers to set the zone to the nearest values that would work, then designs again. */
+/* Why this piece does not resize smoothly: it is assembled from cabinets the shop sells in a few sizes only.
+   Said here in words, before anyone touches the handles, because the steps are otherwise baffling. */
+function renderSteps(p, Ls) {
+  const el = $('#pSteps'); el.hidden = true; el.innerHTML = '';
+  if (!p || !Ls.some((L) => L.caissons)) return;
+  const m = (p.modules || []).find((x) => x.fabrication === 'caissons' && caisSys(x)); if (!m) return;
+  const sys = caisSys(m), legs = num(m.pieds_mm), topT = num(m.epaisseur_plateau_mm) || CT;
+  const heights = [...new Set(sys.sizes.map((x) => x[1]))].sort((a, b) => a - b);
+  const h = nearest(heights, Math.round(num(m.hauteur_mm) - legs - topT));
+  const widths = [...new Set(sys.sizes.filter((x) => x[1] === h).map((x) => x[0]))].sort((a, b) => a - b);
+  el.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.5"/></svg>
+    <span>Ce meuble est monté avec des caissons <b>${escH(sysShort(sys))}</b> déjà fabriqués. ${escH(sysShort(sys))} n’existe qu’en <b>${cmList(widths)}</b> de large : en 3D, les flèches ne glissent donc pas au millimètre, elles sautent d’une taille vendue à la suivante. Pour une cote libre, prenez la proposition en panneaux découpés.</span>`;
+  el.hidden = false;
+}
 function renderWarn(p) {
   const el = $('#pWarn'); el.innerHTML = ''; el.hidden = !p.attention;
   if (!p.attention) return;
@@ -1564,6 +1578,7 @@ function renderResult() {
   const wTot = Ls.reduce((a, L) => a + L.W, 0), hMax = Math.max(...Ls.map((L) => L.H)), dMax = Math.max(...Ls.map((L) => L.D));
   $('#pDims').innerHTML = [['Largeur', wTot], ['Hauteur', hMax], ['Prof.', dMax]].map(([k, v]) => `<div><span>${k}</span><b>${R0(v).toLocaleString('fr-FR')}</b></div>`).join('');
   $('#pShops').textContent = `${[...new Set(linesFor(S.active).map((l) => l.enseigne).filter(Boolean))].join(' + ')} · ${Ls.some((L) => L.caissons) ? 'caissons du commerce' : 'panneaux sur mesure'} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`;
+  renderSteps(p, Ls);
   const det = Ls.flatMap((L) => L.details).map((x) => x.type === 'passe_cable' ? `passe-câble Ø ${x.dia} mm (${x.face === 'plateau' ? 'plateau' : 'dos'})` : x.type === 'aeration' ? 'aération à l’arrière' : 'fixation anti-basculement');
   $('#pDetails').hidden = !det.length; $('#pDetails').textContent = det.length ? 'Prévu sur le meuble : ' + [...new Set(det)].join(', ') + '.' : '';
   renderWarn(p);
@@ -2457,6 +2472,20 @@ function caisWrite(m, g, ws, h, src) {
 }
 const caisTxt = (ws) => { const c = new Map(); ws.forEach((w) => c.set(w, (c.get(w) || 0) + 1));
   return [...c].map(([w, n]) => `${n} caisson${n > 1 ? 's' : ''} de ${Math.round(w / 10)} cm`).join(' + '); };
+const sysShort = (sys) => sys.nom.replace(/^(IKEA|Castorama|Leroy Merlin)\s+/, '');
+const cmList = (v) => { const l = v.map((x) => Math.round(x / 10)); return l.length < 2 ? `${l[0]} cm` : l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1] + ' cm'; };
+// every size a whole number of these cabinets can reach: the notches the handle can land on
+function caisSteps(g, axis) {
+  if (axis === 'h') return g.heights.map((h) => g.legs + h + g.topT).sort((a, b) => a - b);
+  const out = new Set();
+  const walk = (i, n, sum) => {
+    if (n) out.add(sum);
+    if (i >= g.widths.length || n >= 10 || sum > 4200) return;
+    walk(i + 1, n, sum); walk(i, n + 1, sum + g.widths[i]);
+  };
+  walk(0, 0, 0);
+  return [...out].filter((v) => v >= 400 && v <= 4000).sort((a, b) => a - b);
+}
 /* The shopping lines for the cabinets are recomputed from the plan once it has been edited: the list the
    engine wrote no longer matches a piece that has been pulled wider or had a column added. */
 function caissonLines(p) {
@@ -2510,6 +2539,22 @@ function placeGrips(force) {
     if (on) b.style.transform = `translate3d(${Math.round(clamp(x, 16, W - 16))}px, ${Math.round(clamp(y, 16, H - 16))}px, 0) translate(-50%, -50%)`;
   });
 }
+function gripRail(st, axis) {
+  const box = $('#grail'); box.innerHTML = ''; st.ticks = [];
+  if (!st.g) return;
+  const cv = $('#cv3d'), W = cv.clientWidth, H = cv.clientHeight;
+  const deg = Math.atan2(st.uy, st.ux) * 180 / Math.PI;
+  caisSteps(st.g, axis).forEach((v) => {
+    const k = (v - st.v0) / 100 * st.pxPer100;
+    const x = st.gx + k * st.ux, y = st.gy + k * st.uy;
+    if (x < 10 || x > W - 10 || y < 10 || y > H - 10) return;
+    const d = document.createElement('i'); d.className = 'gtick';
+    d.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) translate(-50%, -50%) rotate(${deg.toFixed(1)}deg)`;
+    box.appendChild(d); st.ticks.push({ d, v });
+  });
+}
+function gripRailOn(st, v) { (st.ticks || []).forEach((t) => t.d.classList.toggle('on', Math.abs(t.v - v) < 1)); }
+
 function gripDrag(b, o, axis) {
   let st = null;
   const mmOf = () => (axis === 'w' ? num(o.m.largeur_mm) || o.L.W : num(o.m.hauteur_mm) || o.L.H);
@@ -2519,8 +2564,11 @@ function gripDrag(b, o, axis) {
     const p0 = new THREE.Vector3(0, 0, L.D), p1 = new THREE.Vector3(axis === 'w' ? 100 : 0, axis === 'w' ? 0 : 100, L.D);
     o.G.localToWorld(p0).project(E.cam); o.G.localToWorld(p1).project(E.cam);
     const ax = (p1.x - p0.x) / 2 * rc.width, ay = -(p1.y - p0.y) / 2 * rc.height, len = Math.hypot(ax, ay) || 1;
-    st = { x: e.clientX, y: e.clientY, v0: mmOf(), ux: ax / len, uy: ay / len, pxPer100: len }; GRIP.dragging = true;
+    const gb = b.getBoundingClientRect();
+    st = { x: e.clientX, y: e.clientY, v0: mmOf(), ux: ax / len, uy: ay / len, pxPer100: len,
+      gx: gb.left + gb.width / 2 - rc.left, gy: gb.top + gb.height / 2 - rc.top }; GRIP.dragging = true;
     if (o.m.fabrication === 'caissons') { st.g = caisState(o); st.cols = JSON.parse(JSON.stringify(o.m.colonnes || [])); }
+    gripRail(st, axis); gripRailOn(st, st.v0);
     if (E.setFast) E.setFast(true);
     b.classList.add('on');
   });
@@ -2531,15 +2579,18 @@ function gripDrag(b, o, axis) {
     const want = clamp(st.v0 + d, lim[0], lim[1]);
     let v, note = '';
     if (st.g) {                                            // ready-made cabinets: only sizes that exist in the shop
-      const g = st.g;
+      const g = st.g, short = sysShort(g.sys);
       if (axis === 'w') {
         const fit = caisFit(g.widths, want, 10);
-        caisWrite(o.m, g, fit.use, g.h, st.cols); v = fit.sum; note = caisTxt(fit.use);
+        caisWrite(o.m, g, fit.use, g.h, st.cols); v = fit.sum;
+        note = `${caisTxt(fit.use)} · ${short} se vend en ${cmList(g.widths)} de large, d’où les crans`;
       } else {
         const h = nearest(g.heights, want - g.legs - g.topT), wa = g.widthsAt(h);
         const ws = g.ws.map((w) => nearest(wa, w));
-        caisWrite(o.m, g, ws, h, st.cols); v = g.legs + h + g.topT; note = caisTxt(ws);
+        caisWrite(o.m, g, ws, h, st.cols); v = g.legs + h + g.topT;
+        note = `${caisTxt(ws)} · ${short} se vend en ${cmList(g.heights)} de haut, d’où les crans`;
       }
+      gripRailOn(st, v);
     } else {
       v = Math.round(want / 10) * 10;
       if (axis === 'w') o.m.largeur_mm = v; else o.m.hauteur_mm = v;
@@ -2547,7 +2598,7 @@ function gripDrag(b, o, axis) {
     gripInfo(o, axis, v, note); gripDraw();
   });
   const end = () => {
-    if (!st) return; st = null; GRIP.dragging = false; b.classList.remove('on');
+    if (!st) return; st = null; GRIP.dragging = false; b.classList.remove('on'); $('#grail').innerHTML = '';
     if (E.setFast) E.setFast(false);
     const p = currentProp(); if (p) p.edited = true;
     refreshAll(); build3D(); renderTabs(); renderWarn(p); E.dirty = true; placeGrips(true);
@@ -2559,11 +2610,14 @@ let gripRaf = 0;
 function gripDraw() { if (gripRaf) return; gripRaf = requestAnimationFrame(() => { gripRaf = 0; build3D(); E.dirty = true; placeGrips(true); }); }
 function gripInfo(o, axis, v, note) {
   const z = o.z || DEFZ, max = axis === 'w' ? pos(z.A) : pos(z.B), el = $('#gripInfo');
-  const over = max ? Math.round(v - max) : 0;
+  const over = max ? Math.round(v - max) : 0, fm = (x) => Math.round(x).toLocaleString('fr-FR');
   el.hidden = false; el.classList.toggle('over', over > 0);
-  el.textContent = `${axis === 'w' ? 'Largeur' : 'Hauteur'} ${Math.round(v).toLocaleString('fr-FR')} mm`
-    + (max ? (over > 0 ? ` · dépasse la zone de ${over.toLocaleString('fr-FR')} mm` : ` · zone ${max.toLocaleString('fr-FR')} mm`) : '')
-    + (note ? ` · ${note}` : '');
+  el.innerHTML = '';
+  const top = document.createElement('b');
+  top.textContent = `${axis === 'w' ? 'Largeur' : 'Hauteur'} ${fm(v)} mm`
+    + (max ? (over > 0 ? ` · dépasse la zone de ${fm(over)} mm` : ` · zone ${fm(max)} mm`) : '');
+  el.appendChild(top);
+  if (note) { const sub = document.createElement('small'); sub.textContent = note; el.appendChild(sub); }
 }
 function loop() {
   if (!E.running) return; requestAnimationFrame(loop);
