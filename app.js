@@ -733,7 +733,8 @@ function layoutModule(m, z) {
       let px = x;
       for (let pi = 0; pi < np; pi++) {
         const o = parts ? parts[pi] : k, type = TYPES.includes(o && o.type) ? o.type : 'ouvert';
-        cells.push({ x: px, y, w: pw, h: ch, type, contenu: (o && o.contenu) || '', rod: !!(o && o.tringle), inner: (o && o.inner) || null, key: `${ci}-${ri}-${pi}`, col: ci, ncols: cols.length });
+        const bat = clamp(Math.round(num(o && o.battants)), 0, 2), hng = (o && o.charnieres) === 'droite' ? 'R' : (o && o.charnieres) === 'gauche' ? 'L' : '';
+        cells.push({ x: px, y, w: pw, h: ch, type, contenu: (o && o.contenu) || '', rod: !!(o && o.tringle), inner: (o && o.inner) || null, bat, hng, key: `${ci}-${ri}-${pi}`, col: ci, ncols: cols.length });
         px += pw; if (pi < np - 1) { vdivs.push({ x: px, y, h: ch }); px += t; }
       }
       y += ch; if (ri < cases.length - 1) { shelves.push({ x, w: cw, y }); y += t; }
@@ -755,8 +756,9 @@ function frontsOf(L, mi) {
     if (c.type === 'ouvert') return;
     const fx = c.x + gap, fy = c.y + gap, fw = c.w - 2 * gap, fh = c.h - 2 * gap;
     if (c.type === 'porte') {
-      if (fw > 650) { out.push({ kind: 'porte', c, side: 'L', x: fx, y: fy, w: fw / 2 - 1, h: fh, k: 0 }); out.push({ kind: 'porte', c, side: 'R', x: fx + fw / 2 + 1, y: fy, w: fw / 2 - 1, h: fh, k: 1 }); }
-      else out.push({ kind: 'porte', c, side: (c.col < c.ncols / 2 || c.ncols === 1) ? 'L' : 'R', x: fx, y: fy, w: fw, h: fh, k: 0 });
+      const two = c.bat ? c.bat === 2 : fw > 650;   // chosen by hand when the case says so, otherwise two leaves past 650 mm
+      if (two) { out.push({ kind: 'porte', c, side: 'L', x: fx, y: fy, w: fw / 2 - 1, h: fh, k: 0 }); out.push({ kind: 'porte', c, side: 'R', x: fx + fw / 2 + 1, y: fy, w: fw / 2 - 1, h: fh, k: 1 }); }
+      else out.push({ kind: 'porte', c, side: c.hng || ((c.col < c.ncols / 2 || c.ncols === 1) ? 'L' : 'R'), x: fx, y: fy, w: fw, h: fh, k: 0 });
     } else if (c.type === 'caisse') {
       const cw = Math.min(fw - 20, 520), ch = Math.max(60, Math.min(fh - 10, 260)), cd = Math.max(150, Math.min(L.D - 40, 340));
       out.push({ kind: 'caisse', c, x: fx + (fw - cw) / 2, y: fy, w: cw, h: ch, d: cd, k: 0 });
@@ -1096,6 +1098,8 @@ function cellRules(L, c) {
     shelfIn: h < 420 ? `Case trop basse pour une étagère intérieure : ${mm(h)}, il en faut 420.` : '',
     drawerIn: h < 320 ? `Case trop basse pour un tiroir caché : ${mm(h)}, il en faut 320.` : D < 320 ? `Meuble pas assez profond pour un tiroir caché : ${mm(D)}, il en faut 320.` : '',
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
+    bat2: w < 500 ? `Case trop étroite pour deux battants : ${mm(w)}, il en faut 500 (soit 250 par battant).` : '',
+    bat1: w > 1000 ? `Case trop large pour un seul battant : ${mm(w)}, 1 000 mm maximum — au-delà, la porte gondole et pèse trop sur les charnières. Coupez d’abord la colonne en deux.` : '',
   };
 }
 function openCell(ref) {
@@ -1110,6 +1114,18 @@ function setEditMode(on, quiet) { // kept for the first-visit coaching: the dots
   $('#spots').classList.toggle('call', !!on);
 }
 function closeCell() { if (!S.selCell) return; S.selCell = null; setTimeout(() => placeSpots(true), 0); $('#cellSheet').hidden = true; document.body.classList.remove('celledit'); resize3D(); if (E.inited) { build3D(); if (E.rBack) { E.rTo = E.rBack; E.rBack = null; } } updateBar(); }
+/* One leaf or two. Left to itself the app splits a door past 650 mm, which is the sane default but not
+   always the wanted one: a 700 mm cupboard with a single door is perfectly normal. With one leaf, the side
+   it opens from matters too, so it is chosen right here rather than guessed from the column's position. */
+function doorSection(X, rules, c) {
+  const two = X.o.battants ? X.o.battants === 2 : c.w - 6 > 650;
+  const side = X.o.charnieres === 'droite' ? 'R' : X.o.charnieres === 'gauche' ? 'L' : ((c.col < c.ncols / 2 || c.ncols === 1) ? 'L' : 'R');
+  const leaf = Math.round((c.w - 6) / (two ? 2 : 1));
+  const seg = (op, lab, on, no) => `<button type="button" class="cseg${on ? ' on' : ''}${no ? ' no' : ''}" data-op="${op}" aria-pressed="${on}">${lab}</button>`;
+  return `<p class="clab">Porte · ${two ? 2 : 1} battant${two ? 's' : ''} de ${leaf.toLocaleString('fr-FR')} mm</p>
+    <div class="csegs" role="group" aria-label="Nombre de battants">${seg('bat:1', 'Porte simple', !two, !!rules.bat1)}${seg('bat:2', 'Porte double', two, !!rules.bat2)}</div>
+    ${two ? '' : `<div class="csegs" role="group" aria-label="Côté des charnières">${seg('hng:L', 'Charnières à gauche', side === 'L')}${seg('hng:R', 'Charnières à droite', side === 'R')}</div>`}`;
+}
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
   const { col, k, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
@@ -1125,6 +1141,7 @@ function renderCell() {
       ${btn('splitH', 'Diviser en largeur', c.w >= 320 && X.np < 3 ? '' : ' no')}${btn('mergeH', 'Réunir en largeur', X.np > 1 ? '' : ' no')}
       ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}
       ${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}</div>
+    ${X.o.type === 'porte' ? doorSection(X, rules, c) : ''}
     <p class="clab">Dans la case${X.o.type === 'ouvert' ? '' : ' · derrière la façade'}</p>
     <div class="chrow"><button type="button" class="cbtn" data-op="shelfIn-">−</button><b class="chval">${inn.shelves || 0} étagère${(inn.shelves || 0) > 1 ? 's' : ''}</b><button type="button" class="cbtn${rules.shelfIn ? ' no' : ''}" data-op="shelfIn+">+</button></div>
     <div class="chrow"><button type="button" class="cbtn" data-op="drawerIn-">−</button><b class="chval">${inn.drawers || 0} tiroir${(inn.drawers || 0) > 1 ? 's' : ''} caché${(inn.drawers || 0) > 1 ? 's' : ''}</b><button type="button" class="cbtn${rules.drawerIn ? ' no' : ''}" data-op="drawerIn+">+</button></div>
@@ -1149,6 +1166,12 @@ function cellOp(op) {
   if ((op === 'mergeDown' || op === 'down') && ref.ri <= 0) return say('Cette case est déjà tout en bas de sa colonne.');
   if (op === 'left' && ref.ci <= 0) return say('Cette colonne est déjà la première à gauche.');
   if (op === 'right' && ref.ci >= nc0 - 1) return say('Cette colonne est déjà la dernière à droite.');
+  if (op.startsWith('bat:') || op.startsWith('hng:')) {
+    if (o.type !== 'porte') return say('Cette case n’a pas de porte : choisissez d’abord « Porte » comme façade.');
+    if (op === 'bat:2') { if (rules.bat2) return say(rules.bat2); o.battants = 2; delete o.charnieres; }
+    if (op === 'bat:1') { if (rules.bat1) return say(rules.bat1); o.battants = 1; }
+    if (op === 'hng:L' || op === 'hng:R') { o.battants = 1; o.charnieres = op === 'hng:L' ? 'gauche' : 'droite'; }
+  }
   if (op.startsWith('shelfIn') || op.startsWith('drawerIn')) {
     const key = op.startsWith('shelfIn') ? 'shelves' : 'drawers', plus = op.endsWith('+'), max = key === 'shelves' ? 5 : 4;
     const inn = o.inner || (o.inner = { shelves: 0, drawers: 0 }), cur = clamp(Math.round(num(inn[key])), 0, max);
@@ -2994,7 +3017,7 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(-1);
-if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell, linesFor, caisFit, caisSys, caissonLines };
+if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell, linesFor, caisFit, caisSys, caissonLines, frontsOf, layoutModule, noticeFor };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
   const id = new URLSearchParams(location.search).get('shot'); if (!id) return;

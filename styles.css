@@ -576,3 +576,11 @@ body.celledit .coach{display:none}
   max-width:min(300px,78vw);padding:8px 14px;border-radius:14px;line-height:1.3}
 .gripinfo b{font-size:13px;font-weight:650}
 .gripinfo small{font-size:11.5px;font-weight:500;opacity:.78}
+
+/* One leaf or two, and which side it opens from: a pair of wide segmented buttons, the live one filled in. */
+.csegs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.cseg{all:unset;cursor:pointer;text-align:center;padding:11px 8px;border-radius:var(--r-md);border:1px solid var(--line2);
+  background:var(--surface);color:var(--fg);font-size:13.5px;font-weight:600;line-height:1.2}
+.cseg.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.cseg.no{opacity:.42}
+.cseg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
