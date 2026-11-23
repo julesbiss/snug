@@ -76,7 +76,7 @@ const HW = {
   V: { nom: 'Vis de jonction de caissons', rech: 'vis de jonction meuble', pack: 10, pp: 5, unit: 'lot de 10' },
   T: { nom: 'Tringle de penderie ovale 1,5 m avec 2 supports', rech: 'tringle penderie ovale 150 cm supports', pack: 1, pp: 15, unit: 'kit' },
   W: { nom: 'Vérin de réglage pour plinthe', rech: 'vérin réglable meuble plinthe', pack: 4, pp: 8, unit: 'lot de 4' },
-  R: { nom: 'Rail de portes coulissantes 2 vantaux, haut et bas', rech: 'rail porte coulissante placard 2 vantaux', pack: 1, pp: 39, unit: 'kit' }};
+  R: { nom: 'Rail de portes coulissantes, haut et bas', rech: 'rail porte coulissante placard', pack: 1, pp: 39, unit: 'kit' }};
 const finById = (id) => FIN.find((f) => f.id === id) || FIN[4];
 const hfinById = (id) => HFIN.find((f) => f.id === id) || HFIN[0];
 const handleById = (id) => HANDLES.find((h) => h.id === id) || HANDLES[0];
@@ -751,8 +751,36 @@ function layoutModule(m, z) {
   return { W, H, D, t, divT, legs, topT, y0, y1, cells, dividers, shelves, vdivs, caissons, boxes, details, raised: num(z.D) > 0 };
 }
 function legXs(L) { const n = Math.max(2, Math.round(L.W / 800) + 1); return Array.from({ length: n }, (_, k) => 20 + (L.W - 90) * k / (n - 1)); }
+/* Sliding doors hang from one rail that runs the length of the furniture: three bays do not get three pairs
+   of doors, they get one set of doors in front of the lot. So the cases set to "coulissante" that sit side by
+   side in the same band are gathered into one run, and the run is divided into leaves of a buildable width.
+   Grooved panels are different: the groove is cut in one case's own top and bottom, so they stay bay by bay. */
+function slidingRuns(cells) {
+  const by = new Map();
+  cells.forEach((c) => { const k = `${Math.round(c.y)}|${Math.round(c.h)}`; if (!by.has(k)) by.set(k, []); by.get(k).push(c); });
+  const runs = [];
+  by.forEach((list) => {
+    list.sort((a, b) => a.x - b.x);
+    let cur = [list[0]];
+    for (let i = 1; i < list.length; i++) {
+      const prev = cur[cur.length - 1];
+      if (list[i].x - (prev.x + prev.w) <= 60) cur.push(list[i]);   // nothing but an upright between them
+      else { runs.push(cur); cur = [list[i]]; }
+    }
+    runs.push(cur);
+  });
+  return runs;
+}
+function runLeaves(run) {
+  const gap = 3, ov = 30, first = run[0], last = run[run.length - 1];
+  const x0 = first.x + gap, x1 = last.x + last.w - gap, span = x1 - x0;
+  const n = clamp(Math.ceil(span / 1000), 2, 4);          // a leaf past 1 m is too heavy and too wide to handle
+  const pw = (span + ov * (n - 1)) / n, step = pw - ov, out = [];
+  for (let i = 0; i < n; i++) out.push({ kind: 'coulissant', c: first, x: x0 + i * step, y: first.y + gap, w: pw, h: first.h - 2 * gap, k: 0, lane: i % 2, th: 18, step, leaves: n });
+  return out;
+}
 function frontsOf(L, mi) {
-  const out = [], gap = 3;
+  const out = [], gap = 3, slid = [];
   L.cells.forEach((c) => {
     if (c.type === 'ouvert') return;
     const fx = c.x + gap, fy = c.y + gap, fw = c.w - 2 * gap, fh = c.h - 2 * gap;
@@ -760,16 +788,19 @@ function frontsOf(L, mi) {
       const two = c.bat ? c.bat === 2 : fw > 650;   // chosen by hand when the case says so, otherwise two leaves past 650 mm
       if (two) { out.push({ kind: 'porte', c, side: 'L', x: fx, y: fy, w: fw / 2 - 1, h: fh, k: 0 }); out.push({ kind: 'porte', c, side: 'R', x: fx + fw / 2 + 1, y: fy, w: fw / 2 - 1, h: fh, k: 1 }); }
       else out.push({ kind: 'porte', c, side: c.hng || ((c.col < c.ncols / 2 || c.ncols === 1) ? 'L' : 'R'), x: fx, y: fy, w: fw, h: fh, k: 0 });
-    } else if (c.type === 'coulissant' || c.type === 'rainure') {
-      // two leaves that pass each other: each covers a bit more than half, so nothing shows through the joint
-      const th = c.type === 'rainure' ? 8 : 18, ov = clamp(fw * .06, 20, 45), pw = (fw + ov) / 2;
-      out.push({ kind: c.type, c, x: fx, y: fy, w: pw, h: fh, k: 0, lane: 0, th });
-      out.push({ kind: c.type, c, x: fx + fw - pw, y: fy, w: pw, h: fh, k: 0, lane: 1, th });
+    } else if (c.type === 'coulissant') {
+      slid.push(c);                                        // gathered below, with its neighbours on the same rail
+    } else if (c.type === 'rainure') {
+      // two panels that pass each other: each covers a bit more than half, so nothing shows through the joint
+      const ov = clamp(fw * .06, 20, 45), pw = (fw + ov) / 2, step = pw - ov;
+      out.push({ kind: 'rainure', c, x: fx, y: fy, w: pw, h: fh, k: 0, lane: 0, th: 8, step, leaves: 2 });
+      out.push({ kind: 'rainure', c, x: fx + fw - pw, y: fy, w: pw, h: fh, k: 0, lane: 1, th: 8, step, leaves: 2 });
     } else if (c.type === 'caisse') {
       const cw = Math.min(fw - 20, 520), ch = Math.max(60, Math.min(fh - 10, 260)), cd = Math.max(150, Math.min(L.D - 40, 340));
       out.push({ kind: 'caisse', c, x: fx + (fw - cw) / 2, y: fy, w: cw, h: ch, d: cd, k: 0 });
     } else out.push({ kind: c.type, c, x: fx, y: fy, w: fw, h: fh, k: 0 });
   });
+  slidingRuns(slid).forEach((run) => out.push(...runLeaves(run)));
   out.forEach((f) => { f.key = `${S.active}:${mi}:${f.c.key}:${f.k}`; });
   return out;
 }
@@ -1133,6 +1164,9 @@ function cellCtx(ref) {
   const colW = own.length ? Math.max(...own.map((x) => x.x + x.w)) - Math.min(...own.map((x) => x.x)) : c.w;
   return c ? { p, m, col, k, o, parts, np: parts ? parts.length : 1, colW, L, c } : null;
 }
+// does this case sit right next to another one already on a rail, in the same band?
+const joinsRail = (L, c) => L.cells.some((o) => o !== c && o.type === 'coulissant' && Math.round(o.y) === Math.round(c.y) && Math.round(o.h) === Math.round(c.h)
+  && (Math.abs(o.x + o.w - c.x) <= 60 || Math.abs(c.x + c.w - o.x) <= 60));
 function cellRules(L, c) {
   const w = c.w, h = c.h, D = L.D, mm = (v) => `${R0(v).toLocaleString('fr-FR')} mm`;
   return {
@@ -1143,7 +1177,7 @@ function cellRules(L, c) {
     tringle: h < 900 ? `Il faut au moins 900 mm de haut pour une penderie : cette case fait ${mm(h)}. Fusionnez-la avec la case du dessus ou du dessous.` : D < 480 ? `Il faut au moins 480 mm de profondeur pour une penderie : le meuble fait ${mm(D)}.` : '',
     shelfIn: h < 420 ? `Case trop basse pour une étagère intérieure : ${mm(h)}, il en faut 420.` : '',
     drawerIn: h < 320 ? `Case trop basse pour un tiroir caché : ${mm(h)}, il en faut 320.` : D < 320 ? `Meuble pas assez profond pour un tiroir caché : ${mm(D)}, il en faut 320.` : '',
-    coulissant: w < 700 ? `Case trop étroite pour deux portes coulissantes : ${mm(w)}, il en faut 700 (soit 350 par vantail).` : h < 300 ? `Case trop basse pour des portes coulissantes : ${mm(h)}.` : '',
+    coulissant: (w < 700 && !joinsRail(L, c)) ? `Case trop étroite pour des portes coulissantes à elle seule : ${mm(w)}, il en faut 700. Mettez aussi la case voisine en coulissante : elles partageront alors un seul rail, et les portes couvriront les deux.` : h < 300 ? `Case trop basse pour des portes coulissantes : ${mm(h)}.` : '',
     rainure: w < 400 ? `Case trop étroite pour des panneaux à rainures : ${mm(w)}, il en faut 400.` : h > 900 ? `Case trop haute pour des panneaux coulissants de 8 mm : ${mm(h)}, 900 mm maximum — ils gondoleraient dans la rainure.` : D < 200 ? `Meuble pas assez profond pour deux rainures : ${mm(D)}, il en faut 200.` : '',
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
     bat2: w < 500 ? `Case trop étroite pour deux battants : ${mm(w)}, il en faut 500 (soit 250 par battant).` : '',
@@ -1527,10 +1561,11 @@ function noticeFor(p, cu) {
       const kits = new Set(slid.map((x) => x.f.c.key)).size; H('R', kits); H('B', kits * 12);
       st({ title: 'Poser les portes coulissantes', add: slid, explode: [0, 0, 160], hw: [['R', kits], ['B', kits * 12]], tools: ['Visseuse', 'Niveau à bulle', 'Mètre'],
         markers: slid.map((d) => ({ p: [d.f.x + d.f.w / 2, d.f.y + d.f.h, D + 20], c: 'R', follow: 0 })),
-        text: [`Vissez le rail haut sous le dessus et le rail bas au ras de l’avant, bien d’aplomb l’un au-dessus de l’autre (vis B).`,
-          'Présentez le vantail arrière en premier : engagez-le dans la gorge haute, puis laissez-le retomber dans le rail bas.',
-          'Faites de même avec le vantail avant. Les deux vantaux se croisent, chacun dans sa voie.',
-          'Réglez les galets pour que le recouvrement central soit régulier et que les vantaux glissent sans forcer.'] });
+        text: [`Le rail court sur toute la largeur du meuble : ${slid.length} vantaux se partagent un seul rail haut et un seul rail bas.`,
+          'Vissez le rail haut sous le dessus et le rail bas au ras de l’avant, bien d’aplomb l’un au-dessus de l’autre (vis B).',
+          'Posez d’abord les vantaux de la voie arrière : engagez chacun dans la gorge haute, puis laissez-le retomber dans le rail bas.',
+          'Posez ensuite ceux de la voie avant. Les vantaux se croisent, chacun dans sa voie.',
+          'Réglez les galets pour que les recouvrements soient réguliers et que tout glisse sans forcer.'] });
     }
     const groov = fronts.filter((x) => x.f && x.f.kind === 'rainure');
     if (groov.length) {
@@ -2046,7 +2081,7 @@ function drawProjection() {
         if (t < .05) handle2D(g, h, hf, x, y, w, hh, 'v', f.side, k);
         bb = [Math.min(x, fx), y - gr, Math.max(x + w, fx), y + hh + gr];
       } else if (f.kind === 'coulissant' || f.kind === 'rainure') {
-        const run = f.lane ? -(f.w - clamp(f.w * .06, 20, 45)) * t : 0, [sx] = R(f.x + run, f.y, f.w, f.h);
+        const run = f.lane ? -(f.step || f.w) * t : 0, [sx] = R(f.x + run, f.y, f.w, f.h);
         g.fillStyle = pF; g.fillRect(sx, y, w, hh); g.strokeRect(sx, y, w, hh);
         g.fillStyle = 'rgba(15,12,10,.55)'; const lx = f.lane ? sx + Math.max(3, w * .05) : sx + w - Math.max(3, w * .05) - Math.max(2, w * .025);
         g.fillRect(lx, y + hh * .3, Math.max(2, w * .025), hh * .4);
@@ -2414,8 +2449,8 @@ function addFront(G, f, L, M) {
     const lead = f.lane ? 26 : f.w - 26;
     const pull = new THREE.Mesh(new THREE.BoxGeometry(Math.max(14, th * 1.2), Math.min(f.h * .5, 150), 3), mat('dark'));
     pull.position.set(lead, f.h / 2, th); gr.add(pull);
-    const run = f.w - clamp(f.w * .06, 20, 45);
-    register(gr, [panel, pull], { kind: 'slidex', dist: f.lane ? -run : 0, base: f.x }, f.key); return;
+    const step = f.step || (f.w - clamp(f.w * .06, 20, 45));
+    register(gr, [panel, pull], { kind: 'slidex', dist: f.lane ? -step : 0, base: f.x }, f.key); return;
   }
   if (f.kind === 'abattant') {
     const piv = new THREE.Group(); piv.position.set(f.x, f.y, D); G.add(piv);
