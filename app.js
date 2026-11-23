@@ -1110,7 +1110,7 @@ function openCell(ref) {
 // "Modifier" mode: frames every case and explains that a case can be touched. Shown once automatically.
 function setEditMode(on, quiet) { // kept for the first-visit coaching: the dots do the explaining now
   S.showCells = false; const tip = $('#editTip'); tip.hidden = !on; $('#hint3d').classList.toggle('gone', !!on);
-  clearTimeout(S.editT); if (on) S.editT = setTimeout(() => { tip.hidden = true; $('#hint3d').classList.remove('gone'); }, 5200);
+  clearTimeout(S.editT); if (on) S.editT = setTimeout(() => { tip.hidden = true; $('#hint3d').classList.remove('gone'); }, 8000);
   $('#spots').classList.toggle('call', !!on);
 }
 function closeCell() { if (!S.selCell) return; S.selCell = null; setTimeout(() => placeSpots(true), 0); $('#cellSheet').hidden = true; document.body.classList.remove('celledit'); resize3D(); if (E.inited) { build3D(); if (E.rBack) { E.rTo = E.rBack; E.rBack = null; } } updateBar(); }
@@ -1133,8 +1133,6 @@ const COPS = {
   mergeH:    ['M8 10h32v28H8z M14 18l6 6-6 6 M34 18l-6 6 6 6', 'Réunir'],
   mergeUp:   ['M8 26h32v14H8z M24 20V6 M18 12l6-6 6 6', 'Fusionner ↑'],
   mergeDown: ['M8 8h32v14H8z M24 28v14 M18 36l6 6 6-6', 'Fusionner ↓'],
-  up:        ['M10 30h28v12H10z M24 24V6 M17 13l7-7 7 7', 'Monter'],
-  down:      ['M10 6h28v12H10z M24 24v18 M17 35l7 7 7-7', 'Descendre'],
   colSplit:  ['M10 6h28v36H10z M24 6v36', 'Couper'],
   colMerge:  ['M6 6h36v36H6z M14 18l6 6-6 6 M34 18l-6 6 6 6', 'Réunir'],
   left:      ['M8 6h14v36H8z M26 6h14v36H26z M30 18l-6 6 6 6 M18 30l6-6-6-6', 'Échanger ←'],
@@ -1168,8 +1166,8 @@ function renderCell() {
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
     <p class="clab">Couper cette case · ${R0(c.w).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('split', !rules.split)}${tile('splitH', c.w >= 320 && X.np < 3)}${tile('mergeH', X.np > 1)}</div>
-    <p class="clab">Déplacer ou fusionner</p>
-    <div class="ctiles two">${tile('up', ri < n - 1)}${tile('down', ri > 0)}${tile('mergeUp', ri < n - 1)}${tile('mergeDown', ri > 0)}</div>
+    <p class="clab">Fusionner avec la case voisine</p>
+    <div class="ctiles two">${tile('mergeUp', ri < n - 1)}${tile('mergeDown', ri > 0)}</div>
     <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('colSplit', X.colW >= 380)}${tile('colMerge', nc > 1)}${tile('left', ci > 0)}${tile('right', ci < nc - 1)}</div>
     <p class="small muted">Pour changer la largeur ou la hauteur de tout le meuble, fermez cette feuille et tirez les flèches sur le meuble.</p>`;
@@ -1210,8 +1208,8 @@ function cellOp(op) {
   const X = cellCtx(S.selCell); if (!X) return; const { col, k, o, parts, np, L, c } = X, rules = cellRules(L, c), ref = S.selCell, cs = col.cases, T = 18;
   const say = (m) => { S.cellMsg = m; renderCell(); };
   const n0 = cs.length, nc0 = X.m.colonnes.length;
-  if ((op === 'mergeUp' || op === 'up') && ref.ri >= n0 - 1) return say('Cette case est déjà tout en haut de sa colonne.');
-  if ((op === 'mergeDown' || op === 'down') && ref.ri <= 0) return say('Cette case est déjà tout en bas de sa colonne.');
+  if (op === 'mergeUp' && ref.ri >= n0 - 1) return say('Cette case est déjà tout en haut de sa colonne.');
+  if (op === 'mergeDown' && ref.ri <= 0) return say('Cette case est déjà tout en bas de sa colonne.');
   if (op === 'left' && ref.ci <= 0) return say('Cette colonne est déjà la première à gauche.');
   if (op === 'right' && ref.ci >= nc0 - 1) return say('Cette colonne est déjà la dernière à droite.');
   if (op.startsWith('bat:') || op.startsWith('hng:')) {
@@ -1236,18 +1234,6 @@ function cellOp(op) {
     const j = op === 'mergeUp' ? ref.ri + 1 : ref.ri - 1, o = cs[j]; if (!o) return;
     const merged = { ...k, hauteur_mm: num(k.hauteur_mm) + num(o.hauteur_mm) + T, tringle: !!(k.tringle || o.tringle) };
     cs.splice(Math.min(ref.ri, j), 2, merged); ref.ri = Math.min(ref.ri, j);
-  } else if (op === 'up' || op === 'down') {
-    // the contents change place, the shelves stay where they are: otherwise the whole column seems to move
-    const j = op === 'up' ? ref.ri + 1 : ref.ri - 1, A2 = cs[ref.ri], B2 = cs[j];
-    const na = Array.isArray(A2.parts) ? A2.parts.length : 1, nb = Array.isArray(B2.parts) ? B2.parts.length : 1;
-    if (na > 1 || nb > 1) {
-      // a divided case: only the compartment the user touched changes place, not the one beside it
-      if (na !== nb) return say(`La case ${op === 'up' ? 'du dessus' : 'du dessous'} n’est pas divisée comme celle-ci : divisez-la en ${na} pour déplacer une seule partie, ou réunissez celle-ci en largeur.`);
-      const pi = ref.pi || 0, keep = A2.parts[pi]; A2.parts[pi] = B2.parts[pi]; B2.parts[pi] = keep; ref.ri = j;
-    } else {
-      const take = (o) => ({ type: o.type, contenu: o.contenu, tringle: o.tringle, parts: o.parts }), put = (o, v) => { o.type = v.type; o.contenu = v.contenu; o.tringle = v.tringle; if (v.parts) o.parts = v.parts; else delete o.parts; };
-      const a2 = take(A2), b2 = take(B2); put(A2, b2); put(B2, a2); ref.ri = j;
-    }
   }
   else if (op === 'left' || op === 'right') { const cols = X.m.colonnes, j = op === 'left' ? ref.ci - 1 : ref.ci + 1; [cols[ref.ci], cols[j]] = [cols[j], cols[ref.ci]]; ref.ci = j; }
   else if (op === 'taller' || op === 'shorter') {
@@ -1657,8 +1643,13 @@ function renderResult() {
   document.querySelectorAll('#panes .pane').forEach((x) => { x.hidden = x.dataset.pane !== S.pane; });
   renderCfgNav();
   renderView();
-  let seen = false; try { seen = !!localStorage.getItem('snug.edited'); } catch {}
-  if (!seen && !S.tipShown && S.view === '3d') { S.tipShown = true; setTimeout(() => { if (S.step === 4 && !S.selCell) setEditMode(true); }, 900); }
+  // the coaching used to disarm itself before the 3D was even on screen, so it was almost never seen:
+  // it now waits for the pencils to actually exist, and it comes back once per visit
+  if (!S.tipShown && !S.tipWait && S.view === '3d') {
+    S.tipWait = true;
+    setTimeout(() => { S.tipWait = false;
+      if (!S.tipShown && !S.selCell && SPOT.items.length && !document.body.classList.contains('celledit')) { S.tipShown = true; setEditMode(true); } }, 1200);
+  }
 }
 const PANES = [['modele', 'Modèle'], ['matieres', 'Matières'], ['pieds', 'Pieds'], ['poignees', 'Poignées'], ['liste', 'Liste de courses'], ['notice', 'Notice']];
 function renderCfgNav() {
@@ -2482,6 +2473,7 @@ function buildSpots() {
   if (!E.inited || S.view !== '3d') return;
   (E.cellPicks || []).forEach((pl) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'spot';
+    b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l4.5 4.5L8 20.5H3.5V16z"/></svg>';
     const cell = pl.userData.cell; b.setAttribute('aria-label', `Modifier la case ${cell.ci + 1}`);
     b.onclick = (e) => { e.stopPropagation(); setEditMode(false); openCell(cell); };
     box.appendChild(b); SPOT.items.push({ b, pl, cell });
