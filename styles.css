@@ -628,3 +628,10 @@ body.celledit .coach{display:none}
 .details[open] > summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
 .details > .col{padding:0 14px 14px}
 .details > summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+/* Dictation button: quiet until it listens, then unmistakably live. */
+.btn.mic{display:inline-flex;align-items:center;gap:6px}
+.btn.mic.on{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.mic.on svg{animation:micpulse 1.1s ease-in-out infinite}
+@keyframes micpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.btn.mic.on svg{animation:none}}

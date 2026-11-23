@@ -3,7 +3,7 @@
 // Leroy Merlin and Castorama often block automated reads, in which case the app keeps its search link.
 
 export const config = { runtime: 'edge' };
-const BUILD = 'v39';   // shown by the hand check, so a stale answer from a cache or an older deploy is obvious
+const BUILD = 'v41';   // shown by the hand check, so a stale answer from a cache or an older deploy is obvious
 
 const fixEnc = (t) => { try { return /[\u00C2-\u00C5][\u0080-\u00BF]/.test(t) ? decodeURIComponent(escape(t)) : t; } catch { return t; } };
 const json = (body, status = 200, fresh = false) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': fresh ? 'no-store, max-age=0' : 'public, max-age=3600' } });
@@ -104,12 +104,21 @@ export default async function handler(req) {
   const items = (Array.isArray(body.items) ? body.items : []).slice(0, 40);
   const out = [];
   let i = 0;
+  // A line can name several shops: all of them are asked, and the cheapest real price wins. That is the
+  // whole point of the app — the same panel is not the same price in two shops.
   const worker = async () => {
     while (i < items.length) {
-      const it = items[i++]; const fn = SHOPS[String(it.shop || '').toLowerCase()];
-      let found = null;
-      if (fn && it.q) { try { found = await fn(String(it.q).slice(0, 120)); } catch { found = null; } }
-      out.push({ k: it.k, found });
+      const it = items[i++];
+      const names = (Array.isArray(it.shops) ? it.shops : [it.shop]).map((x) => String(x || '').toLowerCase()).filter((x) => SHOPS[x]).slice(0, 4);
+      const q = String(it.q || '').slice(0, 120);
+      if (!names.length || !q) { out.push({ k: it.k, found: null }); continue; }
+      const tries = await Promise.all(names.map(async (name) => {
+        try { const f = await SHOPS[name](q); return f ? { ...f, shop: name } : null; } catch { return null; }
+      }));
+      const got = tries.filter(Boolean);
+      const priced = got.filter((f) => +f.price > 0).sort((a, b) => +a.price - +b.price);
+      const found = priced[0] || got.find((f) => f.image) || got[0] || null;
+      out.push({ k: it.k, found, compare: got.map((f) => ({ shop: f.shop, price: +f.price || null })) });
     }
   };
   await Promise.all(Array.from({ length: 6 }, worker));

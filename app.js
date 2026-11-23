@@ -924,6 +924,43 @@ async function aiText() {
   btn.disabled = false; btn.textContent = 'Comprendre';
 }
 $('#aiGo').onclick = aiText;
+
+/* Saying it out loud instead of typing it on a phone. The dictation is the browser's own (Web Speech API):
+   no key of ours, nothing uploaded by us, and offered only where the browser actually has it. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+function setupVoice() {
+  const b = $('#aiMic'); if (!b) return;
+  if (!SR) { b.hidden = true; return; }   // a browser without dictation simply keeps the keyboard
+  b.hidden = false;
+  b.onclick = () => {
+    if (rec) { rec.stop(); return; }
+    const ta = $('#aiIn'), out = $('#aiOut'), before = ta.value.trim();
+    const r = new SR(); rec = r; r.lang = 'fr-FR'; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+    const stop = () => { rec = null; b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); b.querySelector('span').textContent = 'Dicter'; };
+    r.onresult = (e) => {
+      let txt = ''; for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+      ta.value = (before ? before + ' ' : '') + txt.trim();
+    };
+    r.onerror = (e) => {
+      out.hidden = false; out.className = 'small warn';
+      out.textContent = e.error === 'not-allowed' || e.error === 'service-not-allowed' ? 'Micro refusé. Autorisez le micro pour ce site dans les réglages de votre navigateur.'
+        : e.error === 'no-speech' ? 'Je n’ai rien entendu. Réessayez en parlant plus près du téléphone.'
+        : e.error === 'network' ? 'La dictée a besoin d’une connexion.' : 'La dictée n’a pas fonctionné sur ce téléphone. Vous pouvez écrire votre demande.';
+    };
+    r.onend = () => {
+      const now = ta.value.trim(); stop();
+      if (now && now !== before) aiText();                              // heard something: understand it at once
+      else if ((out.textContent || '').startsWith('Parlez')) out.hidden = true;
+    };
+    try {
+      r.start();
+      b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); b.querySelector('span').textContent = 'J’écoute…';
+      out.hidden = false; out.className = 'small muted'; out.textContent = 'Parlez : dites ce que vous voulez ranger, et à peu près combien.';
+    } catch { stop(); }
+  };
+}
+setupVoice();
 document.querySelectorAll('#cType button').forEach((b) => { b.onclick = () => document.querySelectorAll('#cType button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
 $('#cCancel').onclick = () => { $('#customForm').hidden = true; };
 $('#cAdd').onclick = () => {
@@ -1015,7 +1052,7 @@ async function makePdf(kind) {
   const text = (t, size, opt = {}) => { doc.setFont('helvetica', opt.bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...(opt.color || ink));
     const lines = doc.splitTextToSize(pdfTxt(t), opt.w || CW); const lh = size * .42; need(lines.length * lh); doc.text(lines, opt.x || M, y + lh * .8); y += lines.length * lh + (opt.after ?? 1.5); };
   const rule = () => { need(4); doc.setDrawColor(220, 222, 226); doc.line(M, y, PW - M, y); y += 4; };
-  const N = noticeFor(p, cu), lines = linesFor(S.active), total = lines.reduce((a, l) => a + l.prix, 0);
+  const N = noticeFor(p, cu), lines = linesFor(S.active), total = lines.reduce((a, l) => a + priceOf(l), 0);
   const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
   // cover
   text('SNUG', 9, { bold: true, color: gold, after: 1 });
@@ -1032,7 +1069,7 @@ async function makePdf(kind) {
     lines.forEach((l) => {
       const art = doc.splitTextToSize(pdfTxt(`${l.qte} × ${l.article}`), CW - 30); need(art.length * 4.6 + 12);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...ink); doc.text(art, M, y + 4);
-      doc.setFont('helvetica', 'normal'); doc.text(pdfTxt(eur(l.prix)), PW - M, y + 4, { align: 'right' }); y += art.length * 4.6;
+      doc.setFont('helvetica', 'normal'); doc.text(pdfTxt(eur(priceOf(l))), PW - M, y + 4, { align: 'right' }); y += art.length * 4.6;
       doc.setFontSize(9); doc.setTextColor(...mute); doc.text(pdfTxt([l.enseigne, l.detail].filter(Boolean).join(' · ')).slice(0, 110), M, y + 3.5); y += 4.6;
       doc.setTextColor(...gold); doc.textWithLink(pdfTxt(`Ouvrir chez ${l.enseigne || 'le vendeur'} ->`), M, y + 3.5, { url: shopUrl(l.enseigne, l.recherche) }); y += 6.5;
       doc.setDrawColor(235, 236, 239); doc.line(M, y, PW - M, y); y += 3;
@@ -1655,7 +1692,7 @@ function renderTabs() {
   [...tabs.children].forEach((b, i) => {
     const ready = !!S.result[i]; b.disabled = !ready; b.setAttribute('aria-pressed', String(i === S.active));
     b.innerHTML = '<span></span><b></b>'; b.querySelector('span').textContent = VARIANTS[i].nom;
-    b.querySelector('b').textContent = ready ? eur(linesFor(i).reduce((a, l) => a + l.prix, 0)) : '—';
+    b.querySelector('b').textContent = ready ? eur(linesFor(i).reduce((a, l) => a + priceOf(l), 0)) : '—';
   });
 }
 function renderResult() {
@@ -1734,7 +1771,7 @@ const thumbPath = (txt) => (THUMBS.find(([re]) => re.test(txt)) || [null, 'M9 9h
 function renderList() {
   const lines = linesFor(S.active); const tb = $('#pList'); tb.innerHTML = ''; let tot = 0;
   lines.forEach((it) => {
-    tot += it.prix; const tr = document.createElement('tr');
+    tot += priceOf(it); const tr = document.createElement('tr');
     const a = document.createElement('td'); a.className = 'n'; a.textContent = (it.qte ?? '') + '×';
     const b = document.createElement('td'); b.textContent = it.article;
     const s = document.createElement('span'); s.className = 'sub'; s.textContent = [it.enseigne, it.detail].filter(Boolean).join(' · '); b.appendChild(s);
@@ -1743,13 +1780,16 @@ function renderList() {
     ph.hidden = !!(pr && pr.image); b.prepend(ph);   // the drawing steps aside for a real photo, and comes back if it fails to load
     if (pr && pr.image) { const im = document.createElement('img'); im.className = 'pthumb'; im.alt = ''; im.loading = 'lazy'; im.referrerPolicy = 'no-referrer';
       im.onerror = () => { im.remove(); ph.hidden = false; }; im.src = pr.image; b.prepend(im); }
-    if (pr && pr.name) { const pn = document.createElement('span'); pn.className = 'sub pname'; pn.textContent = pr.name + (pr.price ? ` · ${eur(+pr.price)} pièce` : ''); b.appendChild(pn); }
+    if (pr && pr.name) { const pn = document.createElement('span'); pn.className = 'sub pname';
+      const shop = pr.shop ? SHOP_NAMES[pr.shop] || pr.shop : '';
+      pn.textContent = [pr.name, pr.price ? `${eur(+pr.price)} pièce` : '', shop && !new RegExp(shop, 'i').test(it.enseigne || '') ? `moins cher chez ${shop}` : ''].filter(Boolean).join(' · ');
+      b.appendChild(pn); }
     const l = document.createElement('a'); l.href = linkOf(it); l.target = '_blank'; l.rel = 'noopener'; l.textContent = pr && pr.url ? `Voir le produit chez ${it.enseigne} ↗` : `Chercher chez ${it.enseigne || 'le vendeur'} ↗`; b.appendChild(l);
-    const c = document.createElement('td'); c.className = 'n'; c.textContent = eur(it.prix);
+    const c = document.createElement('td'); c.className = 'n'; c.textContent = eur(priceOf(it)); if (pr && +pr.price > 0 && priceOf(it) !== num(it.prix)) c.title = 'Prix du magasin';
     tr.append(a, b, c); tb.appendChild(tr);
   });
   loadProducts(lines);
-  const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '')), got = want.filter((it) => productOf(it)).length;
+  const want = lines.filter((it) => /ikea|leroy|casto|brico/i.test(it.enseigne || '') && !isService(it)), got = want.filter((it) => productOf(it)).length;
   const shops = [...new Set(want.filter((it) => !productOf(it)).map((it) => it.enseigne))].filter(Boolean);
   $('#pPhotos').textContent = !want.length ? ''
     : prodBusy && !got ? 'Recherche des photos et des fiches produits…'
@@ -1760,20 +1800,34 @@ function renderList() {
 }
 /* Real products for the list (photo, name, price, direct page), found by api/products and kept in this browser. */
 const PKEY = 'snug.products.v2'; let PROD = {}; try { PROD = JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch { PROD = {}; }
+const SHOP_NAMES = { ikea: 'IKEA', castorama: 'Castorama', 'leroy merlin': 'Leroy Merlin', 'brico depot': 'Brico Dépôt' };
 const pkey = (it) => `${(it.enseigne || '').toLowerCase()}|${String(it.recherche || it.article).toLowerCase()}`;
 const productOf = (it) => { const v = PROD[pkey(it)]; return v && v.found ? v.found : null; };
+/* The shown price is the shop's own as soon as we have it: estimates were only ever a stand-in. A figure far
+   off the estimate means the search landed on the wrong article, so the estimate is kept rather than a wrong
+   price — and the line says which it is. */
+function priceOf(it) {
+  const q = Math.max(1, Math.round(num(it.qte)) || 1), est = num(it.prix) / q, pr = productOf(it), real = pr && +pr.price > 0 ? +pr.price : 0;
+  if (!real || !est) return num(it.prix);
+  const r = real / est;
+  return r >= .3 && r <= 3 ? Math.round(real * q * 100) / 100 : num(it.prix);
+}
 const linkOf = (it) => { const p = productOf(it); return p && p.url ? p.url : shopUrl(it.enseigne, it.recherche); };
 let prodBusy = false;
+/* A cabinet with a reference exists at one shop only; a panel, a screw or a hinge exists everywhere, so
+   every readable shop is asked and the cheapest answer is kept. */
+const shopsFor = (it) => (/ikea/i.test(it.enseigne || '') ? ['ikea'] : ['castorama', 'leroy merlin', 'brico depot']);
+const isService = (it) => /^service\b|d[ée]coupe des panneaux/i.test(`${it.recherche} ${it.article}`);
 async function loadProducts(lines) {
-  const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '') && !(PROD[pkey(it)] && (PROD[pkey(it)].found || Date.now() - PROD[pkey(it)].at < 6e5)));
+  const want = lines.filter((it) => /ikea|leroy|casto|brico/i.test(it.enseigne || '') && !isService(it) && !(PROD[pkey(it)] && (PROD[pkey(it)].found || Date.now() - PROD[pkey(it)].at < 6e5)));
   if (!want.length || prodBusy) return; prodBusy = true;
   try {
-    const res = await fetch('api/products', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: want.map((it) => ({ k: pkey(it), shop: it.enseigne, q: String(it.recherche || it.article).replace(/^(IKEA|Leroy Merlin|Castorama)\s+/i, '') })) }) });
+    const res = await fetch('api/products', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ items: want.map((it) => ({ k: pkey(it), shops: shopsFor(it), q: String(it.recherche || it.article).replace(/^(IKEA|Leroy Merlin|Castorama|Brico D[ée]p[ôo]t)\s+/i, '') })) }) });
     if (!res.ok) { S.prodFail = true; return; } const d = await res.json(); S.prodFail = !(d.results || []).some((r) => r.found);
     (d.results || []).forEach((r) => { PROD[r.k] = { found: r.found, at: Date.now() }; });
     try { localStorage.setItem(PKEY, JSON.stringify(PROD)); } catch {}
-    if (S.step === 4 && currentProp()) { renderList(); if (!$('#cartSheet').hidden) renderCart(); }
-  } catch { S.prodFail = true; } finally { prodBusy = false; if (S.step === 4 && currentProp()) renderList(); }
+    if (S.step === 4 && currentProp()) { renderList(); renderTabs(); if (!$('#cartSheet').hidden) renderCart(); }
+  } catch { S.prodFail = true; } finally { prodBusy = false; if (S.step === 4 && currentProp()) { renderList(); renderTabs(); } }
 }
 
 /* Express basket: SNUG walks through the articles shop by shop. One tap opens the product on the shop's site,
@@ -1813,7 +1867,7 @@ function renderCart() {
     ${!left && lines.length ? '<p class="cartdone">Tout est dans vos paniers : il ne reste qu’à les valider sur chaque site.</p>' : ''}
     ${shops.map((sh) => { const cu = cartUrlOf(sh), fin = shopDone(sh);
       return `<div class="cshoph"><h2 class="cshop">${escH(sh)}</h2>${fin && cu ? `<a class="btn primary sm" href="${cu}" target="_blank" rel="noopener">Valider mon panier ↗</a>` : ''}</div>` + lines.filter((l) => (l.enseigne || 'Autre') === sh).map((l) => { const k = pkey(l), p = productOf(l), st = done[k];
-      return `<div class="citem${st === true ? ' ok' : st ? ' skip' : ''}${l === cur ? ' now' : ''}">${p && p.image ? `<img src="${escH(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${l.qte} × ${escH(l.article)}</b><span>${st === 'skip' ? 'Passé · ' : ''}${eur(l.prix)}</span></div>
+      return `<div class="citem${st === true ? ' ok' : st ? ' skip' : ''}${l === cur ? ' now' : ''}">${p && p.image ? `<img src="${escH(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${l.qte} × ${escH(l.article)}</b><span>${st === 'skip' ? 'Passé · ' : ''}${eur(priceOf(l))}</span></div>
         <a class="btn ghost sm" href="${escH(linkOf(l))}" target="_blank" rel="noopener" data-k="${k}">Ouvrir</a><button type="button" class="ccheck" data-k="${escH(k)}" aria-pressed="${st === true}" aria-label="Ajouté au panier">✓</button></div>`; }).join(''); }).join('')}
     ${n || Object.keys(done).length ? '<button type="button" class="btn ghost sm" id="cartReset">Tout recommencer</button>' : ''}</div>`;
   el.hidden = false;
@@ -1849,7 +1903,7 @@ window.addEventListener('pageshow', cartBack);
 $('#cartBtn').onclick = () => { cartUndo = null; renderCart(); $('#cartSheet').scrollTop = 0; };
 $('#copyBtn').onclick = async () => {
   const p = currentProp(); if (!p) return;
-  const txt = `${projectName()} · ${p.nom}\n` + linesFor(S.active).map((it) => `${it.qte}× ${it.article} (${it.enseigne}) ${eur(it.prix)}\n   ${shopUrl(it.enseigne, it.recherche)}`).join('\n');
+  const txt = `${projectName()} · ${p.nom}\n` + linesFor(S.active).map((it) => `${it.qte}× ${it.article} (${it.enseigne}) ${eur(priceOf(it))}\n   ${shopUrl(it.enseigne, it.recherche)}`).join('\n');
   try { await navigator.clipboard.writeText(txt); $('#copyBtn').textContent = 'Copiée'; } catch { $('#copyBtn').textContent = 'Copie impossible'; }
   setTimeout(() => { $('#copyBtn').textContent = 'Copier'; }, 1800);
 };
