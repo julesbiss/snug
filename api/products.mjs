@@ -3,9 +3,10 @@
 // Leroy Merlin and Castorama often block automated reads, in which case the app keeps its search link.
 
 export const config = { runtime: 'edge' };
+const BUILD = 'v37';   // shown by the hand check, so a stale answer from a cache or an older deploy is obvious
 
 const fixEnc = (t) => { try { return /[\u00C2-\u00C5][\u0080-\u00BF]/.test(t) ? decodeURIComponent(escape(t)) : t; } catch { return t; } };
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
+const json = (body, status = 200, fresh = false) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': fresh ? 'no-store, max-age=0' : 'public, max-age=3600' } });
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const UA_DESK = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
@@ -77,8 +78,9 @@ export default async function handler(req) {
   if (req.method === 'GET') { // quick check from a browser: /api/products?shop=ikea&q=besta
     const u = new URL(req.url), fn = SHOPS[String(u.searchParams.get('shop') || 'ikea').toLowerCase()], q = u.searchParams.get('q') || 'besta';
     WHY = [];
-    try { const found = fn ? await fn(q) : null; return json({ shop: u.searchParams.get('shop') || 'ikea', q, found, pourquoi: found ? undefined : (WHY.length ? WHY : 'aucune piste') }); }
-    catch (e) { return json({ error: String(e && e.message || e), pourquoi: WHY }); }
+    // never cached: this route exists to say how things stand right now, and an hour-old answer is worse than none
+    try { const found = fn ? await fn(q) : null; return json({ shop: u.searchParams.get('shop') || 'ikea', q, found, pourquoi: found ? 'trouve' : (WHY.length ? WHY : 'aucune piste'), build: BUILD }, 200, true); }
+    catch (e) { return json({ error: String(e && e.message || e), pourquoi: WHY, build: BUILD }, 200, true); }
   }
   if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   let body; try { body = await req.json(); } catch { return json({ code: 'invalid_request' }, 400); }
