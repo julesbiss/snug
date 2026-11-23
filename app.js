@@ -1684,6 +1684,21 @@ function goPane(id, dir) {
   });
 })();
 function refreshAll() { S.notice = noticeFor(currentProp(), S.custom[S.active]); renderCustom(); renderList(); if (S.pane === 'notice') renderNotice(); }
+/* No product photo for a line? The row looked broken rather than merely unillustrated. A plain drawing of
+   what the article is keeps the list readable, and never pretends to be a photo of the real product. */
+const THUMBS = [
+  [/panneau|contreplaqu|m[ée]lamin|plan de travail|tablette|planche/i, 'M5 15h38v18H5z M17 15v18 M29 15v18'],
+  [/caisson|meuble|[ée]l[ée]ment mural/i, 'M8 10h32v28H8z M8 24h32 M22 17h4 M22 31h4'],
+  [/caisse/i, 'M6 16h36v22H6z M6 25h36 M18 16v22 M30 16v22'],
+  [/vis |vis,|[ée]querre|taquet|cheville|goujon/i, 'M24 7v27 M18 41l6-7 6 7z M17 13h14 M17 19h14 M17 25h14'],
+  [/charni[èe]re/i, 'M13 9h9v30h-9z M26 9h9v30h-9z M24 15v3 M24 24v3 M24 33v3'],
+  [/coulisse|glissi[èe]re/i, 'M6 17h36v7H6z M6 29h36v7H6z M14 20.5h8 M26 32.5h8'],
+  [/poign[ée]e|bouton/i, 'M9 24h30 M9 17v14 M39 17v14'],
+  [/pied|v[ée]rin|socle|plinthe/i, 'M8 12h32 M24 12v24 M15 40h18'],
+  [/peinture|huile|vernis|lasure/i, 'M13 8h22v11H13z M24 19v5 M17 24h14v16H17z'],
+  [/d[ée]coupe|scie/i, 'M6 30h28l-4-6 4-6H6z M38 18l5 6-5 6'],
+];
+const thumbPath = (txt) => (THUMBS.find(([re]) => re.test(txt)) || [null, 'M9 9h30v30H9z M9 24h30'])[1];
 function renderList() {
   const lines = linesFor(S.active); const tb = $('#pList'); tb.innerHTML = ''; let tot = 0;
   lines.forEach((it) => {
@@ -1692,7 +1707,10 @@ function renderList() {
     const b = document.createElement('td'); b.textContent = it.article;
     const s = document.createElement('span'); s.className = 'sub'; s.textContent = [it.enseigne, it.detail].filter(Boolean).join(' · '); b.appendChild(s);
     const pr = productOf(it);
-    if (pr && pr.image) { const im = document.createElement('img'); im.className = 'pthumb'; im.alt = ''; im.loading = 'lazy'; im.referrerPolicy = 'no-referrer'; im.src = pr.image; im.onerror = () => im.remove(); b.prepend(im); }
+    const ph = document.createElement('span'); ph.className = 'pthumb ph'; ph.innerHTML = ICON(thumbPath(`${it.article} ${it.detail}`), 30);
+    ph.hidden = !!(pr && pr.image); b.prepend(ph);   // the drawing steps aside for a real photo, and comes back if it fails to load
+    if (pr && pr.image) { const im = document.createElement('img'); im.className = 'pthumb'; im.alt = ''; im.loading = 'lazy'; im.referrerPolicy = 'no-referrer';
+      im.onerror = () => { im.remove(); ph.hidden = false; }; im.src = pr.image; b.prepend(im); }
     if (pr && pr.name) { const pn = document.createElement('span'); pn.className = 'sub pname'; pn.textContent = pr.name + (pr.price ? ` · ${eur(+pr.price)} pièce` : ''); b.appendChild(pn); }
     const l = document.createElement('a'); l.href = linkOf(it); l.target = '_blank'; l.rel = 'noopener'; l.textContent = pr && pr.url ? `Voir le produit chez ${it.enseigne} ↗` : `Chercher chez ${it.enseigne || 'le vendeur'} ↗`; b.appendChild(l);
     const c = document.createElement('td'); c.className = 'n'; c.textContent = eur(it.prix);
@@ -1700,7 +1718,12 @@ function renderList() {
   });
   loadProducts(lines);
   const want = lines.filter((it) => /ikea|leroy|casto/i.test(it.enseigne || '')), got = want.filter((it) => productOf(it)).length;
-  $('#pPhotos').textContent = !want.length ? '' : got === want.length ? '' : prodBusy ? 'Recherche des photos et des fiches produits…' : S.prodFail ? 'Photos et fiches indisponibles pour le moment (le site du magasin n’a pas répondu). Les liens ouvrent la recherche sur son site.' : `${got} / ${want.length} fiches produits trouvées.`;
+  const shops = [...new Set(want.filter((it) => !productOf(it)).map((it) => it.enseigne))].filter(Boolean);
+  $('#pPhotos').textContent = !want.length ? ''
+    : prodBusy && !got ? 'Recherche des photos et des fiches produits…'
+    : got === want.length ? ''
+    : !got ? `Pas de fiche produit pour le moment : ${shops.join(' et ')} ${shops.length > 1 ? 'ne répondent' : 'ne répond'} pas à la lecture automatique. Les dessins remplacent les photos, et chaque lien ouvre la recherche sur le site.`
+    : `${got} photo${got > 1 ? 's' : ''} sur ${want.length} · ${shops.join(' et ')} ${shops.length > 1 ? 'ne répondent' : 'ne répond'} pas à la lecture automatique.`;
   $('#pTotal').textContent = eur(tot); $('#pPrice').textContent = '≈ ' + eur(tot); $('#pPrice2').textContent = '≈ ' + eur(tot); updateBar();
 }
 /* Real products for the list (photo, name, price, direct page), found by api/products and kept in this browser. */
