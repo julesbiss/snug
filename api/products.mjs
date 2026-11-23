@@ -7,7 +7,24 @@ export const config = { runtime: 'edge' };
 const fixEnc = (t) => { try { return /[\u00C2-\u00C5][\u0080-\u00BF]/.test(t) ? decodeURIComponent(escape(t)) : t; } catch { return t; } };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const UA_DESK = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+// A shop's search page is often behind a bot wall that looks at the whole set of headers, not just the agent:
+// a bare "user-agent + accept: text/html" is the easiest request in the world to refuse.
+const pageHeaders = (ua) => ({
+  'user-agent': ua,
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  'cache-control': 'no-cache',
+  'sec-ch-ua': '"Chromium";v="131", "Not_A Brand";v="24"',
+  'sec-ch-ua-mobile': ua === UA_DESK ? '?0' : '?1',
+  'sec-ch-ua-platform': ua === UA_DESK ? '"macOS"' : '"iOS"',
+  'sec-fetch-dest': 'document', 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'none', 'sec-fetch-user': '?1',
+  'upgrade-insecure-requests': '1',
+});
+// why a read failed, for the one-tap check at /api/products?shop=…&q=… — the app itself never shows this
+let WHY = [];
+const why = (m) => { if (WHY.length < 8) WHY.push(m); };
 
 async function ikeaTry(q) {
   // two spellings of IKEA's search endpoint: the newer one with explicit parameters, then the bare one
@@ -29,10 +46,17 @@ async function ikea(q) {
 }
 
 // Generic read of a product search page: first product link + image from the page's structured data or markup.
+// Two attempts with different fingerprints, a desktop browser first, because that is what the wall expects.
 async function genericShop(base, searchUrl, q, linkRe) {
-  const r = await withTimeout(fetch(searchUrl(q), { headers: { 'user-agent': UA, accept: 'text/html', 'accept-language': 'fr-FR,fr;q=0.9' } }), 6000);
-  if (!r.ok) return null;
+  let r = null;
+  for (const ua of [UA_DESK, UA]) {
+    try { r = await withTimeout(fetch(searchUrl(q), { headers: pageHeaders(ua), redirect: 'follow' }), 7000); } catch (e) { why(`${ua === UA_DESK ? 'desktop' : 'mobile'}: ${String(e && e.message || e)}`); r = null; continue; }
+    if (r.ok) break;
+    why(`${ua === UA_DESK ? 'desktop' : 'mobile'}: HTTP ${r.status}`); r = null;
+  }
+  if (!r) return null;
   const html = await r.text();
+  if (!/<script[^>]+application\/ld\+json/.test(html) && !linkRe.test(html)) why(`page lue (${html.length} o) mais aucun produit dedans`);
   const ld = [...html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/g)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).filter(Boolean);
   const flat = ld.flatMap((x) => (Array.isArray(x) ? x : [x])).flatMap((x) => (x.itemListElement ? x.itemListElement.map((e) => e.item || e) : [x]));
   const prod = flat.find((x) => x && (x['@type'] === 'Product' || x.url) && (x.image || x.url));
@@ -52,7 +76,9 @@ const SHOPS = {
 export default async function handler(req) {
   if (req.method === 'GET') { // quick check from a browser: /api/products?shop=ikea&q=besta
     const u = new URL(req.url), fn = SHOPS[String(u.searchParams.get('shop') || 'ikea').toLowerCase()], q = u.searchParams.get('q') || 'besta';
-    try { return json({ shop: u.searchParams.get('shop') || 'ikea', q, found: fn ? await fn(q) : null }); } catch (e) { return json({ error: String(e && e.message || e) }); }
+    WHY = [];
+    try { const found = fn ? await fn(q) : null; return json({ shop: u.searchParams.get('shop') || 'ikea', q, found, pourquoi: found ? undefined : (WHY.length ? WHY : 'aucune piste') }); }
+    catch (e) { return json({ error: String(e && e.message || e), pourquoi: WHY }); }
   }
   if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   let body; try { body = await req.json(); } catch { return json({ code: 'invalid_request' }, 400); }
