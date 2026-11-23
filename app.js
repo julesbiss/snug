@@ -2039,6 +2039,7 @@ function drawProjection() {
       if (t > .02 && f.c.contenu && f.kind !== 'caisse') { g.fillStyle = 'rgba(255,255,255,.8)'; g.font = `600 ${clamp(hh / 6, 10, 14)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(f.c.contenu).slice(0, Math.floor(w / 8)), x + w / 2, y + hh / 2); }
       g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1;
       let bb = [x, y, x + w, y + hh];
+      const a0 = g.globalAlpha; if (t > .03 && f.kind !== 'tiroir' && f.kind !== 'caisse') g.globalAlpha = a0 * Math.max(.25, 1 - .75 * t);
       if (f.kind === 'porte') {
         const a = t * 1.75, hx = f.side === 'L' ? x : x + w, dir = f.side === 'L' ? 1 : -1, fx = hx + dir * w * Math.cos(a), gr = hh * .12 * Math.sin(a);
         g.fillStyle = pF; poly(g, [[hx, y], [fx, y - gr], [fx, y + hh + gr], [hx, y + hh]]); g.fill(); g.stroke();
@@ -2064,6 +2065,7 @@ function drawProjection() {
         handle2D(g, h, hf, nx, ny, nw, nh, f.kind === 'caisse' ? 'c' : 'h', 'C', k * sc);
         bb = [nx, y, nx + nw, ny + nh];
       }
+      g.globalAlpha = a0;
       hits.push({ x0: bb[0], y0: bb[1], x1: bb[2], y1: bb[3], key: f.key });
     });
     const [tx, ty, tw, th] = R(-6, L.H - L.topT, L.W + 12, L.topT);
@@ -2305,8 +2307,29 @@ $('#openAll').onclick = () => { const ks = viewKeys(); const open = ks.some((k) 
 $('#recenter').onclick = () => frame();
 let REG = null;
 function register(obj, parts, data, key) {
-  obj.userData = { ...data, key }; getSt(key); const R = REG || E; R.opens.push(obj);
-  parts.forEach((p) => p && p.traverse((m) => { if (m.isMesh) { m.userData.owner = obj; R.picks.push(m); } }));
+  obj.userData = { ...data, key, ms: [] }; getSt(key); const R = REG || E; R.opens.push(obj);
+  parts.forEach((p) => p && p.traverse((m) => { if (m.isMesh) { m.userData.owner = obj; R.picks.push(m); obj.userData.ms.push(m); } }));
+}
+/* An open door still stood between the eye and the inside of the case, whatever the angle. It now turns
+   almost see-through as it opens, and stops casting a shadow while it is: you look straight through it and
+   still see where it is. Each front gets its own copy of the material, so one door fading leaves the others
+   alone; closing it puts the shared material back. */
+function fadeFront(o, t) {
+  const ms = o.userData.ms; if (!ms || !ms.length) return;
+  const want = t < .03 ? 1 : Math.max(.2, 1 - .8 * Math.min(1, t));
+  if (Math.abs((o.userData.op === undefined ? 1 : o.userData.op) - want) < .012) return;
+  o.userData.op = want;
+  const clear = want > .995;
+  ms.forEach((m) => {
+    if (!m.userData.srcMat) { m.userData.srcMat = m.material; m.userData.fadeMat = m.material.clone(); }
+    if (clear) { m.material = m.userData.srcMat; m.castShadow = m.userData.shad !== false; }
+    else {
+      const fm = m.userData.fadeMat; fm.transparent = true; fm.opacity = want; fm.depthWrite = false;
+      if (m.userData.shad === undefined) m.userData.shad = m.castShadow;
+      m.material = fm; m.castShadow = false;
+    }
+  });
+  E.dirty = true;
 }
 function applyOpens(list, step) {
   let moving = false;
@@ -2315,6 +2338,7 @@ function applyOpens(list, step) {
     if (step) { const dd = st.target - st.t; if (Math.abs(dd) > .003) { st.t += dd * .16; moving = true; } else st.t = st.target; }
     const t = st.t; if (u.kind === 'door') o.rotation.y = u.dir * t * 1.75; else if (u.kind === 'flap') o.rotation.x = t * 1.45;
     else if (u.kind === 'slidex') o.position.x = u.base + t * u.dist; else o.position.z = u.base + t * u.dist;
+    fadeFront(o, t);
   });
   return moving;
 }
@@ -2508,7 +2532,8 @@ function placeModules(p) {
 }
 function build3D() {
   if (!E.inited) return; const p = currentProp(), cu = S.custom[S.active]; if (!p || !cu) return;
-  while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+  // shared materials come from the cache and are kept; the see-through copy made for one front is its own
+  while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.userData && o.userData.fadeMat) o.userData.fadeMat.dispose(); }); }
   E.picks = []; E.opens = []; E.cellPicks = []; E.mods = []; REG = null;
   E.scene.background = lin('#DAD5CE');
   const M = matsFor(cu), feet = feetById(cu.pieds);
