@@ -3,7 +3,7 @@
 // Leroy Merlin and Castorama often block automated reads, in which case the app keeps its search link.
 
 export const config = { runtime: 'edge' };
-const BUILD = 'v37';   // shown by the hand check, so a stale answer from a cache or an older deploy is obvious
+const BUILD = 'v39';   // shown by the hand check, so a stale answer from a cache or an older deploy is obvious
 
 const fixEnc = (t) => { try { return /[\u00C2-\u00C5][\u0080-\u00BF]/.test(t) ? decodeURIComponent(escape(t)) : t; } catch { return t; } };
 const json = (body, status = 200, fresh = false) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': fresh ? 'no-store, max-age=0' : 'public, max-age=3600' } });
@@ -23,9 +23,10 @@ const pageHeaders = (ua) => ({
   'sec-fetch-dest': 'document', 'sec-fetch-mode': 'navigate', 'sec-fetch-site': 'none', 'sec-fetch-user': '?1',
   'upgrade-insecure-requests': '1',
 });
-// why a read failed, for the one-tap check at /api/products?shop=…&q=… — the app itself never shows this
-let WHY = [];
-const why = (m) => { if (WHY.length < 8) WHY.push(m); };
+// Why a read failed, for the one-tap check at /api/products?shop=…&q=… — the app itself never shows this.
+// Carried as an argument rather than kept in a module variable, so several shops can be probed at once
+// without their reasons landing in each other's answer.
+const noLog = () => {};
 
 async function ikeaTry(q) {
   // two spellings of IKEA's search endpoint: the newer one with explicit parameters, then the bare one
@@ -48,16 +49,17 @@ async function ikea(q) {
 
 // Generic read of a product search page: first product link + image from the page's structured data or markup.
 // Two attempts with different fingerprints, a desktop browser first, because that is what the wall expects.
-async function genericShop(base, searchUrl, q, linkRe) {
+async function genericShop(base, searchUrl, q, linkRe, log = noLog) {
   let r = null;
   for (const ua of [UA_DESK, UA]) {
-    try { r = await withTimeout(fetch(searchUrl(q), { headers: pageHeaders(ua), redirect: 'follow' }), 7000); } catch (e) { why(`${ua === UA_DESK ? 'desktop' : 'mobile'}: ${String(e && e.message || e)}`); r = null; continue; }
+    const tag = ua === UA_DESK ? 'desktop' : 'mobile';
+    try { r = await withTimeout(fetch(searchUrl(q), { headers: pageHeaders(ua), redirect: 'follow' }), 7000); } catch (e) { log(`${tag}: ${String(e && e.message || e)}`); r = null; continue; }
     if (r.ok) break;
-    why(`${ua === UA_DESK ? 'desktop' : 'mobile'}: HTTP ${r.status}`); r = null;
+    log(`${tag}: HTTP ${r.status}`); r = null;
   }
   if (!r) return null;
   const html = await r.text();
-  if (!/<script[^>]+application\/ld\+json/.test(html) && !linkRe.test(html)) why(`page lue (${html.length} o) mais aucun produit dedans`);
+  if (!/<script[^>]+application\/ld\+json/.test(html) && !linkRe.test(html)) log(`page lue (${html.length} o) mais aucun produit dedans`);
   const ld = [...html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/g)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).filter(Boolean);
   const flat = ld.flatMap((x) => (Array.isArray(x) ? x : [x])).flatMap((x) => (x.itemListElement ? x.itemListElement.map((e) => e.item || e) : [x]));
   const prod = flat.find((x) => x && (x['@type'] === 'Product' || x.url) && (x.image || x.url));
@@ -70,17 +72,32 @@ async function genericShop(base, searchUrl, q, linkRe) {
 }
 const SHOPS = {
   ikea,
-  'leroy merlin': (q) => genericShop('https://www.leroymerlin.fr', (s) => `https://www.leroymerlin.fr/search?q=${encodeURIComponent(s)}`, q, /href="(\/produits\/[^"#?]+\.html)"/),
-  castorama: (q) => genericShop('https://www.castorama.fr', (s) => `https://www.castorama.fr/search?term=${encodeURIComponent(s)}`, q, /href="(\/[^"#?]+\/\d{8,}_CAFR\.prd)"/),
+  'leroy merlin': (q, log) => genericShop('https://www.leroymerlin.fr', (s) => `https://www.leroymerlin.fr/search?q=${encodeURIComponent(s)}`, q, /href="(\/produits\/[^"#?]+\.html)"/, log),
+  castorama: (q, log) => genericShop('https://www.castorama.fr', (s) => `https://www.castorama.fr/search?term=${encodeURIComponent(s)}`, q, /href="(\/[^"#?]+\/\d{8,}_CAFR\.prd)"/, log),
+  // Candidates, only ever reached by the hand check below: the app never names these shops. Their search paths
+  // are guesses, which is on purpose — a 404 means the door is open and the path is wrong (worth pursuing),
+  // a 403 means the door is shut to a datacenter address whatever we send (not worth pursuing).
+  'brico depot': (q, log) => genericShop('https://www.bricodepot.fr', (s) => `https://www.bricodepot.fr/recherche?q=${encodeURIComponent(s)}`, q, /href="(\/[^"#?]*(?:produit|\/p\/)[^"#?]*)"/, log),
+  bricomarche: (q, log) => genericShop('https://www.bricomarche.com', (s) => `https://www.bricomarche.com/recherche?q=${encodeURIComponent(s)}`, q, /href="(\/p\/[^"#?]+)"/, log),
+  manomano: (q, log) => genericShop('https://www.manomano.fr', (s) => `https://www.manomano.fr/recherche/${encodeURIComponent(s)}`, q, /href="(\/p\/[^"#?]+)"/, log),
 };
+const PROBE_Q = { ikea: 'besta', 'leroy merlin': 'panneau pin', castorama: 'panneau pin', 'brico depot': 'panneau pin', bricomarche: 'panneau pin', manomano: 'panneau pin' };
 
 export default async function handler(req) {
   if (req.method === 'GET') { // quick check from a browser: /api/products?shop=ikea&q=besta
     const u = new URL(req.url), fn = SHOPS[String(u.searchParams.get('shop') || 'ikea').toLowerCase()], q = u.searchParams.get('q') || 'besta';
-    WHY = [];
     // never cached: this route exists to say how things stand right now, and an hour-old answer is worse than none
-    try { const found = fn ? await fn(q) : null; return json({ shop: u.searchParams.get('shop') || 'ikea', q, found, pourquoi: found ? 'trouve' : (WHY.length ? WHY : 'aucune piste'), build: BUILD }, 200, true); }
-    catch (e) { return json({ error: String(e && e.message || e), pourquoi: WHY, build: BUILD }, 200, true); }
+    const probe = async (name) => {
+      const w = []; const log = (m) => { if (w.length < 6) w.push(m); };
+      let found = null; try { found = await SHOPS[name](PROBE_Q[name] || 'panneau pin', log); } catch (e) { log(String(e && e.message || e)); }
+      return { boutique: name, photo: !!(found && found.image), pourquoi: found ? 'trouve' : (w.length ? w : 'aucune piste') };
+    };
+    if (String(u.searchParams.get('shop') || '').toLowerCase() === 'all') {   // one tap, every shop, side by side
+      return json({ build: BUILD, boutiques: await Promise.all(Object.keys(SHOPS).map(probe)) }, 200, true);
+    }
+    const w = []; const log = (m) => { if (w.length < 6) w.push(m); };
+    try { const found = fn ? await fn(q, log) : null; return json({ shop: u.searchParams.get('shop') || 'ikea', q, found, pourquoi: found ? 'trouve' : (w.length ? w : 'aucune piste'), build: BUILD }, 200, true); }
+    catch (e) { return json({ error: String(e && e.message || e), pourquoi: w, build: BUILD }, 200, true); }
   }
   if (req.method !== 'POST') return json({ code: 'method_not_allowed' }, 405);
   let body; try { body = await req.json(); } catch { return json({ code: 'invalid_request' }, 400); }
