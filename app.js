@@ -1187,14 +1187,16 @@ const COPS = {
   right:     ['M8 6h14v36H8z M26 6h14v36H26z M18 18l6 6-6 6 M30 30l-6-6 6-6', 'Échanger →'],
   tringle:   ['M8 12h32 M14 12v8 M34 12v8 M18 20h12v22H18z', 'Penderie'],
 };
-// "Dimensions" read as sizes only, so nobody looked there to cut or merge a case: the tab is what it holds.
-const CELL_TABS = [['facade', 'Façade'], ['interieur', 'Intérieur'], ['taille', 'Structure']];
+/* Two tabs, in the order the decision is actually made: what the case is — its shape and what goes inside it —
+   and then how it is closed. Cutting a case and putting a rail in it are the same thought; a door is the next
+   one. They used to be three tabs, with the façade first, which asked for the last decision first. */
+const CELL_TABS = [['amenagement', 'Aménagement'], ['facade', 'Façade']];
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
   const { col, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
   const where = n === 1 ? 'seule case' : X.k === col.cases[0] ? 'en bas' : X.k === col.cases[n - 1] ? 'en haut' : `case ${S.selCell.ri + 1} sur ${n}`;
   const ri = S.selCell.ri, ci = S.selCell.ci, nc = X.m.colonnes.length, inn = X.o.inner || {};
-  if (!CELL_TABS.some(([id]) => id === S.cellTab)) S.cellTab = 'facade';
+  if (!CELL_TABS.some(([id]) => id === S.cellTab)) S.cellTab = 'amenagement';
   const tab = S.cellTab;
   const tile = (op, ok, label, pressed) => { const [d, lab] = COPS[op] || ['', op];
     return `<button type="button" data-op="${op}" class="${ok ? '' : 'no'}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${ICON(d, 24)}<span>${label || lab}</span></button>`; };
@@ -1204,14 +1206,7 @@ function renderCell() {
     ${X.o.type === 'porte' ? doorSection(X, rules, c) : ''}
     ${X.o.type === 'ouvert' ? '<p class="small muted">Case ouverte : rien à fermer. Choisissez une façade ci-dessus pour régler la porte, le tiroir ou l’abattant.</p>' : ''}`;
 
-  const interieur = `<div class="ctiles"><button type="button" data-op="tringle" class="wide${!rules.tringle || X.o.tringle ? '' : ' no'}" aria-pressed="${!!X.o.tringle}">${ICON(COPS.tringle[0], 24)}<span>Penderie · tringle pour les cintres</span></button></div>
-    <p class="clab">Étagères${X.o.type === 'ouvert' ? '' : ' · derrière la façade'}</p>
-    ${row('shelfIn', `${inn.shelves || 0} étagère${(inn.shelves || 0) > 1 ? 's' : ''}`, (inn.shelves || 0) > 0, !rules.shelfIn)}
-    <p class="clab">Tiroirs cachés</p>
-    ${row('drawerIn', `${inn.drawers || 0} tiroir${(inn.drawers || 0) > 1 ? 's' : ''}`, (inn.drawers || 0) > 0, !rules.drawerIn)}
-    <p class="small muted">Un tiroir caché reste invisible : il se trouve derrière la façade, comme dans un dressing.</p>`;
-
-  const taille = `<p class="clab">Hauteur de la case</p>
+  const amenagement = `<p class="clab">Hauteur de la case</p>
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
     <p class="clab">Couper cette case · ${R0(c.w).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('split', !rules.split)}${tile('splitH', c.w >= 320 && X.np < 3)}${tile('mergeH', X.np > 1)}</div>
@@ -1219,14 +1214,20 @@ function renderCell() {
     <div class="ctiles two">${tile('mergeUp', ri < n - 1)}${tile('mergeDown', ri > 0)}</div>
     <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('colSplit', X.colW >= 380)}${tile('colMerge', nc > 1)}${tile('left', ci > 0)}${tile('right', ci < nc - 1)}</div>
-    <p class="small muted">Pour changer la largeur ou la hauteur de tout le meuble, fermez cette feuille et tirez les flèches sur le meuble.</p>`;
+    <p class="chsep">Dans la case${X.o.type === 'ouvert' ? '' : ' · derrière la façade'}</p>
+    <div class="ctiles"><button type="button" data-op="tringle" class="wide${!rules.tringle || X.o.tringle ? '' : ' no'}" aria-pressed="${!!X.o.tringle}">${ICON(COPS.tringle[0], 24)}<span>Penderie · tringle pour les cintres</span></button></div>
+    <p class="clab">Étagères</p>
+    ${row('shelfIn', `${inn.shelves || 0} étagère${(inn.shelves || 0) > 1 ? 's' : ''}`, (inn.shelves || 0) > 0, !rules.shelfIn)}
+    <p class="clab">Tiroirs cachés</p>
+    ${row('drawerIn', `${inn.drawers || 0} tiroir${(inn.drawers || 0) > 1 ? 's' : ''}`, (inn.drawers || 0) > 0, !rules.drawerIn)}
+    <p class="small muted">Un tiroir caché reste invisible : il se trouve derrière la façade, comme dans un dressing. Pour changer la largeur ou la hauteur de tout le meuble, fermez cette feuille et tirez les flèches sur le meuble.</p>`;
 
   el.innerHTML = `<div class="cgrab" id="cellGrab" role="button" tabindex="0" aria-label="Agrandir ou réduire la feuille"></div>
     <div class="cbody">
       <div class="chead"><div><b>Colonne ${ci + 1} · ${where}${X.np > 1 ? ` · partie ${(S.selCell.pi || 0) + 1} sur ${X.np}` : ''}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${X.o.contenu ? ' · ' + String(X.o.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
       <div class="ctabs" role="tablist">${CELL_TABS.map(([id, nom]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="${tab === id}">${nom}</button>`).join('')}</div>
       <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>
-      ${tab === 'facade' ? facade : tab === 'interieur' ? interieur : taille}
+      ${tab === 'facade' ? facade : amenagement}
     </div>`;
   el.hidden = false;
   $('#cellClose').onclick = closeCell;

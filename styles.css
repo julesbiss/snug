@@ -439,7 +439,7 @@ body.cfg .navbar{border-bottom:1px solid var(--line);padding-block:8px}
 .cgrab::before{content:"";width:40px;height:4px;border-radius:2px;background:var(--line2)}
 .cbody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;
   padding:4px max(16px,env(safe-area-inset-left,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
-.ctabs{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;margin:0 -2px;
+.ctabs{position:sticky;top:0;z-index:2;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;padding:4px;margin:0 -2px;
   border-radius:12px;background:var(--surface2)}
 .ctabs button{all:unset;cursor:pointer;text-align:center;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
 .ctabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.1)}
@@ -635,3 +635,7 @@ body.celledit .coach{display:none}
 .btn.mic.on svg{animation:micpulse 1.1s ease-in-out infinite}
 @keyframes micpulse{0%,100%{opacity:1}50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.btn.mic.on svg{animation:none}}
+
+/* Inside one tab, a heavier rule where the subject changes: the shape of the case, then what goes in it. */
+.celldock .chsep{margin:14px 0 -2px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
