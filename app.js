@@ -1126,33 +1126,81 @@ function doorSection(X, rules, c) {
     <div class="csegs" role="group" aria-label="Nombre de battants">${seg('bat:1', 'Porte simple', !two, !!rules.bat1)}${seg('bat:2', 'Porte double', two, !!rules.bat2)}</div>
     ${two ? '' : `<div class="csegs" role="group" aria-label="Côté des charnières">${seg('hng:L', 'Charnières à gauche', side === 'L')}${seg('hng:R', 'Charnières à droite', side === 'R')}</div>`}`;
 }
+/* Small pictures for the actions, so a glance is enough: a frame and the cut or the arrow that applies to it. */
+const COPS = {
+  split:     ['M8 8h32v32H8z M8 24h32', 'Couper en 2'],
+  splitH:    ['M8 8h32v32H8z M24 8v32', 'Diviser'],
+  mergeH:    ['M8 10h32v28H8z M14 18l6 6-6 6 M34 18l-6 6 6 6', 'Réunir'],
+  mergeUp:   ['M8 26h32v14H8z M24 20V6 M18 12l6-6 6 6', 'Fusionner ↑'],
+  mergeDown: ['M8 8h32v14H8z M24 28v14 M18 36l6 6 6-6', 'Fusionner ↓'],
+  up:        ['M10 30h28v12H10z M24 24V6 M17 13l7-7 7 7', 'Monter'],
+  down:      ['M10 6h28v12H10z M24 24v18 M17 35l7 7 7-7', 'Descendre'],
+  colSplit:  ['M10 6h28v36H10z M24 6v36', 'Couper'],
+  colMerge:  ['M6 6h36v36H6z M14 18l6 6-6 6 M34 18l-6 6 6 6', 'Réunir'],
+  left:      ['M8 6h14v36H8z M26 6h14v36H26z M30 18l-6 6 6 6 M18 30l6-6-6-6', 'Échanger ←'],
+  right:     ['M8 6h14v36H8z M26 6h14v36H26z M18 18l6 6-6 6 M30 30l-6-6 6-6', 'Échanger →'],
+  tringle:   ['M8 12h32 M14 12v8 M34 12v8 M18 20h12v22H18z', 'Penderie'],
+};
+const CELL_TABS = [['facade', 'Façade'], ['interieur', 'Intérieur'], ['taille', 'Dimensions']];
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
-  const { col, k, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
+  const { col, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
   const where = n === 1 ? 'seule case' : X.k === col.cases[0] ? 'en bas' : X.k === col.cases[n - 1] ? 'en haut' : `case ${S.selCell.ri + 1} sur ${n}`;
-  const btn = (id, label, extra = '') => `<button type="button" class="cbtn${extra}" data-op="${id}">${label}</button>`;
   const ri = S.selCell.ri, ci = S.selCell.ci, nc = X.m.colonnes.length, inn = X.o.inner || {};
-  el.innerHTML = `<div class="chead"><div><b>Colonne ${ci + 1} · ${where}${X.np > 1 ? ` · partie ${(S.selCell.pi || 0) + 1} sur ${X.np}` : ''}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${X.o.contenu ? ' · ' + String(X.o.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
-    <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>
-    <p class="clab">Façade</p>
-    <div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${X.o.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
-    <p class="clab">Cette case</p>
-    <div class="cgrid">${btn('split', '+ Étagère', rules.split ? ' no' : '')}<button type="button" class="cbtn${rules.tringle && !X.o.tringle ? ' no' : ''}" data-op="tringle" aria-pressed="${!!X.o.tringle}">${X.o.tringle ? '✓ Penderie' : 'Penderie'}</button>
-      ${btn('splitH', 'Diviser en largeur', c.w >= 320 && X.np < 3 ? '' : ' no')}${btn('mergeH', 'Réunir en largeur', X.np > 1 ? '' : ' no')}
-      ${btn('mergeUp', 'Fusionner ↑', ri < n - 1 ? '' : ' no')}${btn('mergeDown', 'Fusionner ↓', ri > 0 ? '' : ' no')}
-      ${btn('up', '↑ Monter', ri < n - 1 ? '' : ' no')}${btn('down', '↓ Descendre', ri > 0 ? '' : ' no')}</div>
+  if (!CELL_TABS.some(([id]) => id === S.cellTab)) S.cellTab = 'facade';
+  const tab = S.cellTab;
+  const tile = (op, ok, label, pressed) => { const [d, lab] = COPS[op] || ['', op];
+    return `<button type="button" data-op="${op}" class="${ok ? '' : 'no'}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${ICON(d, 24)}<span>${label || lab}</span></button>`; };
+  const row = (op, val, minus, plus) => `<div class="chrow"><button type="button" class="cbtn${minus ? '' : ' no'}" data-op="${op}-" aria-label="Moins">−</button><b class="chval">${val}</b><button type="button" class="cbtn${plus ? '' : ' no'}" data-op="${op}+" aria-label="Plus">+</button></div>`;
+
+  const facade = `<div class="ctypes" role="group" aria-label="Façade">${CELL_TYPES.map(([id, nom, ic]) => `<button type="button" data-op="type:${id}" aria-pressed="${X.o.type === id}" class="${rules[id] ? 'no' : ''}">${ICON(ic, 26)}<span>${nom}</span></button>`).join('')}</div>
     ${X.o.type === 'porte' ? doorSection(X, rules, c) : ''}
-    <p class="clab">Dans la case${X.o.type === 'ouvert' ? '' : ' · derrière la façade'}</p>
-    <div class="chrow"><button type="button" class="cbtn" data-op="shelfIn-">−</button><b class="chval">${inn.shelves || 0} étagère${(inn.shelves || 0) > 1 ? 's' : ''}</b><button type="button" class="cbtn${rules.shelfIn ? ' no' : ''}" data-op="shelfIn+">+</button></div>
-    <div class="chrow"><button type="button" class="cbtn" data-op="drawerIn-">−</button><b class="chval">${inn.drawers || 0} tiroir${(inn.drawers || 0) > 1 ? 's' : ''} caché${(inn.drawers || 0) > 1 ? 's' : ''}</b><button type="button" class="cbtn${rules.drawerIn ? ' no' : ''}" data-op="drawerIn+">+</button></div>
-    <p class="clab">Hauteur de la case</p>
+    ${X.o.type === 'ouvert' ? '<p class="small muted">Case ouverte : rien à fermer. Choisissez une façade ci-dessus pour régler la porte, le tiroir ou l’abattant.</p>' : ''}`;
+
+  const interieur = `<div class="ctiles"><button type="button" data-op="tringle" class="wide${!rules.tringle || X.o.tringle ? '' : ' no'}" aria-pressed="${!!X.o.tringle}">${ICON(COPS.tringle[0], 24)}<span>Penderie · tringle pour les cintres</span></button></div>
+    <p class="clab">Étagères${X.o.type === 'ouvert' ? '' : ' · derrière la façade'}</p>
+    ${row('shelfIn', `${inn.shelves || 0} étagère${(inn.shelves || 0) > 1 ? 's' : ''}`, (inn.shelves || 0) > 0, !rules.shelfIn)}
+    <p class="clab">Tiroirs cachés</p>
+    ${row('drawerIn', `${inn.drawers || 0} tiroir${(inn.drawers || 0) > 1 ? 's' : ''}`, (inn.drawers || 0) > 0, !rules.drawerIn)}
+    <p class="small muted">Un tiroir caché reste invisible : il se trouve derrière la façade, comme dans un dressing.</p>`;
+
+  const taille = `<p class="clab">Hauteur de la case</p>
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
-    <p class="clab">Toute la colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
-    <div class="cgrid">${btn('colSplit', 'Couper en deux colonnes', X.colW >= 380 ? '' : ' no')}${btn('colMerge', 'Réunir deux colonnes', nc > 1 ? '' : ' no')}
-      ${btn('left', '⇄ Avec la colonne ←', ci > 0 ? '' : ' no')}${btn('right', '⇄ Avec la colonne →', ci < nc - 1 ? '' : ' no')}</div>`;
+    <p class="clab">Couper cette case · ${R0(c.w).toLocaleString('fr-FR')} mm de large</p>
+    <div class="ctiles">${tile('split', !rules.split)}${tile('splitH', c.w >= 320 && X.np < 3)}${tile('mergeH', X.np > 1)}</div>
+    <p class="clab">Déplacer ou fusionner</p>
+    <div class="ctiles two">${tile('up', ri < n - 1)}${tile('down', ri > 0)}${tile('mergeUp', ri < n - 1)}${tile('mergeDown', ri > 0)}</div>
+    <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
+    <div class="ctiles">${tile('colSplit', X.colW >= 380)}${tile('colMerge', nc > 1)}${tile('left', ci > 0)}${tile('right', ci < nc - 1)}</div>
+    <p class="small muted">Pour changer la largeur ou la hauteur de tout le meuble, fermez cette feuille et tirez les flèches sur le meuble.</p>`;
+
+  el.innerHTML = `<div class="cgrab" id="cellGrab" role="button" tabindex="0" aria-label="Agrandir ou réduire la feuille"></div>
+    <div class="cbody">
+      <div class="chead"><div><b>Colonne ${ci + 1} · ${where}${X.np > 1 ? ` · partie ${(S.selCell.pi || 0) + 1} sur ${X.np}` : ''}</b><p class="mono muted small">${R0(c.w)} × ${R0(c.h)} mm${X.o.contenu ? ' · ' + String(X.o.contenu).replace(/[<>&]/g, '') : ''}</p></div><button type="button" class="btn primary sm" id="cellClose">Terminé</button></div>
+      <div class="ctabs" role="tablist">${CELL_TABS.map(([id, nom]) => `<button type="button" role="tab" data-tab="${id}" aria-selected="${tab === id}">${nom}</button>`).join('')}</div>
+      <p class="cmsg${S.cellMsg ? '' : ' empty'}" aria-live="polite">${S.cellMsg || ''}</p>
+      ${tab === 'facade' ? facade : tab === 'interieur' ? interieur : taille}
+    </div>`;
   el.hidden = false;
   $('#cellClose').onclick = closeCell;
+  el.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { S.cellTab = b.dataset.tab; S.cellMsg = ''; renderCell(); }; });
   el.querySelectorAll('[data-op]').forEach((b) => { b.onclick = () => cellOp(b.dataset.op); });
+  sheetGrab($('#cellGrab'));
+  resize3D();
+}
+/* Two heights, like a map app: enough to see the furniture, or enough to see every setting. Drag or tap. */
+function sheetGrab(g) {
+  if (!g) return;
+  let y0 = null;
+  const set = (full) => { $('#cellSheet').classList.toggle('full', full); S.cellFull = full; resize3D(); };
+  g.addEventListener('pointerdown', (e) => { y0 = e.clientY; g.setPointerCapture(e.pointerId); });
+  g.addEventListener('pointerup', (e) => {
+    if (y0 === null) return; const d = e.clientY - y0; y0 = null;
+    set(d < -30 ? true : d > 30 ? false : !$('#cellSheet').classList.contains('full'));
+  });
+  g.addEventListener('pointercancel', () => { y0 = null; });
+  g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set(!$('#cellSheet').classList.contains('full')); } });
+  if (S.cellFull) $('#cellSheet').classList.add('full');
 }
 /* The plan stores heights and widths as proportions. Before changing one by a number of millimetres, the column
    (or the row of columns) is rewritten with its real sizes, so the step the user asks for is the step they get. */
@@ -2120,7 +2168,15 @@ function init3D() {
 }
 let STAGE_H = 340;
 function stageSize() { // the 3D view takes the upper part of the screen and stays there while the settings scroll
-  STAGE_H = Math.round(clamp(window.innerHeight * .43, 250, 470));
+  const sheet = $('#cellSheet'), editing = document.body.classList.contains('celledit') && sheet && !sheet.hidden;
+  if (editing) {
+    // the sheet's own height, worked out from its two detents rather than measured mid-animation
+    const body = sheet.querySelector('.cbody'), grab = sheet.querySelector('.cgrab');
+    const nat = (grab ? grab.offsetHeight : 0) + (body ? body.scrollHeight : 0) + 18;
+    const h = clamp(nat, window.innerHeight * .34, window.innerHeight * (S.cellFull ? .68 : .52));
+    const top = Math.max(0, $('#stage3d').getBoundingClientRect().top);   // the app's own header stays above
+    STAGE_H = Math.round(clamp(window.innerHeight - h - top, 190, window.innerHeight));
+  } else STAGE_H = Math.round(clamp(window.innerHeight * .43, 250, 470));
   document.documentElement.style.setProperty('--stageH', STAGE_H + 'px');
 }
 function resize3D() {

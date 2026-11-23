@@ -426,8 +426,34 @@ body.cfg .navbar{border-bottom:1px solid var(--line);padding-block:8px}
 .overlay.bottom{bottom:12px}
 .to3d{display:none!important}
 /* the case editor sits under the 3D view (never over it): every option visible at once */
-.celldock{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px;margin-top:4px}
-.celldock .chead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+/* The sheet of a case: a bottom sheet over a 3D view that stays put, the way a map app or a configurator does
+   it. Before, the settings pushed the furniture off the top of the screen and you adjusted it blind. */
+.celldock{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);
+  border-radius:20px 20px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.16);display:flex;flex-direction:column;
+  max-height:52vh;transition:max-height .24s cubic-bezier(.3,.8,.4,1)}
+.celldock.full{max-height:68vh}
+.cgrab{flex:none;padding:9px 0 3px;display:grid;place-items:center;cursor:grab;touch-action:none}
+.cgrab::before{content:"";width:40px;height:4px;border-radius:2px;background:var(--line2)}
+.cbody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;
+  padding:4px max(16px,env(safe-area-inset-left,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+.ctabs{position:sticky;top:0;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;margin:0 -2px;
+  border-radius:12px;background:var(--surface2)}
+.ctabs button{all:unset;cursor:pointer;text-align:center;padding:9px 4px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
+.ctabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.ctabs button:focus-visible{outline:2px solid var(--accent)}
+.ctiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.ctiles button{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  min-height:70px;padding:8px 4px;border-radius:12px;border:1px solid var(--line2);background:var(--surface2);
+  font-size:11.5px;font-weight:600;color:var(--soft-fg);text-align:center;line-height:1.15}
+.ctiles button svg{opacity:.8}
+.ctiles button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.ctiles button[aria-pressed="true"] svg{opacity:1}
+.ctiles button.no{opacity:.34}
+.ctiles button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctiles.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ctiles button.wide{grid-column:1 / -1;flex-direction:row;gap:9px;min-height:52px;font-size:13.5px}
+.celldock .chead{position:sticky;top:0;z-index:3;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  padding-bottom:8px;background:linear-gradient(180deg,var(--surface) 76%,rgba(255,255,255,0))}
 .celldock .chead b{font-size:16px}
 .celldock .ctypes button{min-height:62px;font-size:12.5px;font-weight:600;gap:4px;background:var(--surface2)}
 .celldock .ctypes button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
@@ -441,7 +467,10 @@ body.cfg .navbar{border-bottom:1px solid var(--line);padding-block:8px}
 .celldock .cmsg.empty{display:none}
 .celldock .clab{font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:2px 0 -4px}
 body.celledit .navbar,body.celledit .panes,body.celledit .bar{display:none}
-body.celledit .wrap{padding-bottom:24px}
+body.celledit{overflow:hidden}
+body.celledit .wrap{padding-bottom:0}
+body.celledit .cfgtop{border-bottom:none}   /* stays stuck under the app's header; the page itself cannot scroll */
+body.celledit .stagewrap::after{display:none}
 /* bottom bar on the result screen: back, price, next */
 .barprice{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;line-height:1.15;padding-left:4px}
 .barprice b{font-family:var(--f-num);font-size:19px;font-weight:600;letter-spacing:-.3px;white-space:nowrap}
@@ -584,3 +613,14 @@ body.celledit .coach{display:none}
 .cseg.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
 .cseg.no{opacity:.42}
 .cseg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* The plan's explanations fold away: the decision (price, sizes) stays above, the reasoning is one tap below. */
+.details{border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);overflow:hidden}
+.details > summary{cursor:pointer;list-style:none;padding:12px 14px;font-size:13.5px;font-weight:600;color:var(--soft-fg);
+  display:flex;align-items:center;justify-content:space-between}
+.details > summary::-webkit-details-marker{display:none}
+.details > summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);
+  transform:rotate(45deg) translate(-2px,-2px);transition:transform .18s}
+.details[open] > summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+.details > .col{padding:0 14px 14px}
+.details > summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
