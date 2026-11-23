@@ -323,7 +323,7 @@ ol.instr li::marker{color:var(--accent);font-family:var(--f-num)}
 .cellsheet{position:fixed;left:0;right:0;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:6;max-width:560px;margin:0 auto;background:var(--surface);border:1px solid var(--line2);border-radius:20px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 -10px 40px rgba(0,0,0,.18);max-height:52vh;overflow-y:auto}
 @media (max-width:600px){.cellsheet{left:10px;right:10px}}
 .cellsheet .ibtn{width:38px;height:38px;font-size:15px}
-.ctypes{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.ctypes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .ctypes button{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);font-size:11.5px;font-weight:600;color:var(--soft-fg);text-align:center}
 .ctypes button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .ctypes button.no,.cbtn.no,.switchrow.no{opacity:.4;text-decoration:line-through}

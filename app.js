@@ -75,7 +75,8 @@ const HW = {
   P: { nom: 'Patins feutre adhésifs', rech: 'patin feutre adhésif', pack: 16, pp: 4, unit: 'lot de 16' },
   V: { nom: 'Vis de jonction de caissons', rech: 'vis de jonction meuble', pack: 10, pp: 5, unit: 'lot de 10' },
   T: { nom: 'Tringle de penderie ovale 1,5 m avec 2 supports', rech: 'tringle penderie ovale 150 cm supports', pack: 1, pp: 15, unit: 'kit' },
-  W: { nom: 'Vérin de réglage pour plinthe', rech: 'vérin réglable meuble plinthe', pack: 4, pp: 8, unit: 'lot de 4' }};
+  W: { nom: 'Vérin de réglage pour plinthe', rech: 'vérin réglable meuble plinthe', pack: 4, pp: 8, unit: 'lot de 4' },
+  R: { nom: 'Rail de portes coulissantes 2 vantaux, haut et bas', rech: 'rail porte coulissante placard 2 vantaux', pack: 1, pp: 39, unit: 'kit' }};
 const finById = (id) => FIN.find((f) => f.id === id) || FIN[4];
 const hfinById = (id) => HFIN.find((f) => f.id === id) || HFIN[0];
 const handleById = (id) => HANDLES.find((h) => h.id === id) || HANDLES[0];
@@ -109,7 +110,7 @@ const VARIANTS = [
   { nom: 'Économique', desc: "le moins cher possible : un maximum d'éléments standard, peu ou pas de découpe" },
   { nom: 'Équilibrée', desc: 'le meilleur compromis entre prix, rangement et finitions' },
   { nom: 'Optimale', desc: "l'espace exploité au centimètre, plus de sur-mesure et de beaux matériaux" }];
-const TYPES = ['ouvert', 'porte', 'tiroir', 'caisse', 'abattant'];
+const TYPES = ['ouvert', 'porte', 'coulissant', 'rainure', 'tiroir', 'caisse', 'abattant'];
 const DEFZ = { x: .1, y: .42, w: .8, h: .4, A: 2450, B: 620, C: 440, D: 0 };
 const STORE_KEY = 'atelier.projets.v1';
 
@@ -759,6 +760,11 @@ function frontsOf(L, mi) {
       const two = c.bat ? c.bat === 2 : fw > 650;   // chosen by hand when the case says so, otherwise two leaves past 650 mm
       if (two) { out.push({ kind: 'porte', c, side: 'L', x: fx, y: fy, w: fw / 2 - 1, h: fh, k: 0 }); out.push({ kind: 'porte', c, side: 'R', x: fx + fw / 2 + 1, y: fy, w: fw / 2 - 1, h: fh, k: 1 }); }
       else out.push({ kind: 'porte', c, side: c.hng || ((c.col < c.ncols / 2 || c.ncols === 1) ? 'L' : 'R'), x: fx, y: fy, w: fw, h: fh, k: 0 });
+    } else if (c.type === 'coulissant' || c.type === 'rainure') {
+      // two leaves that pass each other: each covers a bit more than half, so nothing shows through the joint
+      const th = c.type === 'rainure' ? 8 : 18, ov = clamp(fw * .06, 20, 45), pw = (fw + ov) / 2;
+      out.push({ kind: c.type, c, x: fx, y: fy, w: pw, h: fh, k: 0, lane: 0, th });
+      out.push({ kind: c.type, c, x: fx + fw - pw, y: fy, w: pw, h: fh, k: 0, lane: 1, th });
     } else if (c.type === 'caisse') {
       const cw = Math.min(fw - 20, 520), ch = Math.max(60, Math.min(fh - 10, 260)), cd = Math.max(150, Math.min(L.D - 40, 340));
       out.push({ kind: 'caisse', c, x: fx + (fw - cw) / 2, y: fy, w: cw, h: ch, d: cd, k: 0 });
@@ -1075,7 +1081,10 @@ $('#to3d').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
 /* ================= editing a case of the 3D model: type, hanging rail, shelf, merge, move ================= */
 const CELL_TYPES = [['ouvert', 'Ouvert', 'M8 10h32v28H8z'], ['porte', 'Porte', 'M10 6h28v36H10z M32 22v4'], ['tiroir', 'Tiroir', 'M6 14h36v20H6z M18 24h12'],
-  ['caisse', 'Caisse', 'M6 16h36v22H6z M6 24h36 M6 31h36'], ['abattant', 'Abattant', 'M8 12h32v24H8z M8 36l-4 6 M40 36l4 6 M18 30h12']];
+  ['caisse', 'Caisse', 'M6 16h36v22H6z M6 24h36 M6 31h36'], ['abattant', 'Abattant', 'M8 12h32v24H8z M8 36l-4 6 M40 36l4 6 M18 30h12'],
+  // two leaves passing each other: on rails for a dressing, in grooves for a sideboard
+  ['coulissant', 'Coulissante', 'M5 8h18v32H5z M25 8h18v32H25z M16 24h5 M27 24h5 M5 6h38 M5 42h38'],
+  ['rainure', 'À rainures', 'M6 13h36v22H6z M6 11h36 M6 37h36 M20 13v22 M28 13v22 M17 24h2 M30 24h2']];
 function cellCtx(ref) {
   const p = currentProp(); if (!p || !ref) return null;
   const m = p.modules[ref.mi]; const col = m && m.colonnes && m.colonnes[ref.ci]; const k = col && col.cases && col.cases[ref.ri];
@@ -1097,6 +1106,8 @@ function cellRules(L, c) {
     tringle: h < 900 ? `Il faut au moins 900 mm de haut pour une penderie : cette case fait ${mm(h)}. Fusionnez-la avec la case du dessus ou du dessous.` : D < 480 ? `Il faut au moins 480 mm de profondeur pour une penderie : le meuble fait ${mm(D)}.` : '',
     shelfIn: h < 420 ? `Case trop basse pour une étagère intérieure : ${mm(h)}, il en faut 420.` : '',
     drawerIn: h < 320 ? `Case trop basse pour un tiroir caché : ${mm(h)}, il en faut 320.` : D < 320 ? `Meuble pas assez profond pour un tiroir caché : ${mm(D)}, il en faut 320.` : '',
+    coulissant: w < 700 ? `Case trop étroite pour deux portes coulissantes : ${mm(w)}, il en faut 700 (soit 350 par vantail).` : h < 300 ? `Case trop basse pour des portes coulissantes : ${mm(h)}.` : '',
+    rainure: w < 400 ? `Case trop étroite pour des panneaux à rainures : ${mm(w)}, il en faut 400.` : h > 900 ? `Case trop haute pour des panneaux coulissants de 8 mm : ${mm(h)}, 900 mm maximum — ils gondoleraient dans la rainure.` : D < 200 ? `Meuble pas assez profond pour deux rainures : ${mm(D)}, il en faut 200.` : '',
     split: h < 2 * 120 + 18 ? `Case trop basse pour être coupée en deux : ${mm(h)}.` : '',
     bat2: w < 500 ? `Case trop étroite pour deux battants : ${mm(w)}, il en faut 500 (soit 250 par battant).` : '',
     bat1: w > 1000 ? `Case trop large pour un seul battant : ${mm(w)}, 1 000 mm maximum — au-delà, la porte gondole et pèse trop sur les charnières. Coupez d’abord la colonne en deux.` : '',
@@ -1139,7 +1150,8 @@ const COPS = {
   right:     ['M8 6h14v36H8z M26 6h14v36H26z M18 18l6 6-6 6 M30 30l-6-6 6-6', 'Échanger →'],
   tringle:   ['M8 12h32 M14 12v8 M34 12v8 M18 20h12v22H18z', 'Penderie'],
 };
-const CELL_TABS = [['facade', 'Façade'], ['interieur', 'Intérieur'], ['taille', 'Dimensions']];
+// "Dimensions" read as sizes only, so nobody looked there to cut or merge a case: the tab is what it holds.
+const CELL_TABS = [['facade', 'Façade'], ['interieur', 'Intérieur'], ['taille', 'Structure']];
 function renderCell() {
   const X = cellCtx(S.selCell), el = $('#cellSheet'); if (!X) { el.hidden = true; return; }
   const { col, L, c } = X, rules = cellRules(L, c), n = col.cases.length;
@@ -1166,7 +1178,7 @@ function renderCell() {
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
     <p class="clab">Couper cette case · ${R0(c.w).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('split', !rules.split)}${tile('splitH', c.w >= 320 && X.np < 3)}${tile('mergeH', X.np > 1)}</div>
-    <p class="clab">Fusionner avec la case voisine</p>
+    <p class="clab">Réunir avec la case du dessus ou du dessous</p>
     <div class="ctiles two">${tile('mergeUp', ri < n - 1)}${tile('mergeDown', ri > 0)}</div>
     <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('colSplit', X.colW >= 380)}${tile('colMerge', nc > 1)}${tile('left', ci > 0)}${tile('right', ci < nc - 1)}</div>
@@ -1361,9 +1373,10 @@ function noticeFor(p, cu) {
     const plat = P('Plateau', mmTxt(W + 0, D + 12, L.topT), [0, L.H - L.topT, 0, W, L.topT, D + 12], 'plateau');
     const plinth = hidden ? P(feet.inset ? 'Socle en retrait' : 'Plinthe', mmTxt(W - 2 * feet.inset, L.legs, 18), [feet.inset, 0, D - 18 - feet.inset, W - 2 * feet.inset, L.legs, 18], 'plinthe') : null;
     const fronts = fr.map((f, i) => {
-      const nom = { porte: 'Porte', tiroir: 'Façade de tiroir', abattant: 'Abattant', caisse: 'Caisse' }[f.kind];
-      return f.kind === 'caisse' ? P(`${nom} ${i + 1}`, mmTxt(f.w, f.h, f.d), [f.x, f.y, D - f.d - 14, f.w, f.h, f.d], 'caisse', { f })
-        : P(`${nom} ${i + 1}`, mmTxt(f.w, f.h, 18), [f.x, f.y, D, f.w, f.h, 18], 'facade', { f });
+      const nom = { porte: 'Porte', tiroir: 'Façade de tiroir', abattant: 'Abattant', caisse: 'Caisse', coulissant: 'Porte coulissante', rainure: 'Panneau coulissant' }[f.kind];
+      if (f.kind === 'caisse') return P(`${nom} ${i + 1}`, mmTxt(f.w, f.h, f.d), [f.x, f.y, D - f.d - 14, f.w, f.h, f.d], 'caisse', { f });
+      const th = f.th || 18, z = f.kind === 'rainure' ? D - 14 - (1 - f.lane) * (th + 6) : f.kind === 'coulissant' ? D + 2 + f.lane * (th + 4) : D;
+      return P(`${nom} ${i + 1}`, mmTxt(f.w, f.h, th), [f.x, f.y, z, f.w, f.h, th], 'facade', { f });
     });
     const dboxes = fr.filter((f) => f.kind === 'tiroir').map((f, i) => { const bd = Math.max(100, D - 70), bh = Math.max(40, Math.min(f.h - 30, 180)); return P(`Caisson de tiroir ${i + 1} (4 pièces)`, mmTxt(f.w - 40, bd, bh), [f.x + 20, f.y + 10, D - bd, f.w - 40, bh, bd], 'tiroirbox', { f }); });
     let shown = [];
@@ -1470,6 +1483,25 @@ function noticeFor(p, cu) {
       st({ title: 'Poser les abattants', add: flaps, explode: [0, 0, 240], hw: [['D', flaps.length * 2], ['F', flaps.length]], tools: ['Perceuse', 'Mèche Forstner 35 mm'],
         markers: flaps.flatMap((d) => [[d.f.x + 100, d.f.y + 22], [d.f.x + d.f.w - 100, d.f.y + 22]].map(([x, y]) => ({ p: [x, y, D + 18], c: 'D', follow: 1 }))),
         text: ['Percez 2 logements Ø 35 mm sur le chant bas de chaque abattant, à 100 mm des bords.', 'Posez les charnières D, puis un compas F de chaque côté pour retenir l’abattant ouvert.'] });
+    }
+    const slid = fronts.filter((x) => x.f && x.f.kind === 'coulissant');
+    if (slid.length) {
+      const kits = new Set(slid.map((x) => x.f.c.key)).size; H('R', kits); H('B', kits * 12);
+      st({ title: 'Poser les portes coulissantes', add: slid, explode: [0, 0, 160], hw: [['R', kits], ['B', kits * 12]], tools: ['Visseuse', 'Niveau à bulle', 'Mètre'],
+        markers: slid.map((d) => ({ p: [d.f.x + d.f.w / 2, d.f.y + d.f.h, D + 20], c: 'R', follow: 0 })),
+        text: [`Vissez le rail haut sous le dessus et le rail bas au ras de l’avant, bien d’aplomb l’un au-dessus de l’autre (vis B).`,
+          'Présentez le vantail arrière en premier : engagez-le dans la gorge haute, puis laissez-le retomber dans le rail bas.',
+          'Faites de même avec le vantail avant. Les deux vantaux se croisent, chacun dans sa voie.',
+          'Réglez les galets pour que le recouvrement central soit régulier et que les vantaux glissent sans forcer.'] });
+    }
+    const groov = fronts.filter((x) => x.f && x.f.kind === 'rainure');
+    if (groov.length) {
+      st({ title: 'Rainurer et glisser les panneaux', add: groov, explode: [0, 0, 120], tools: ['Défonceuse', 'Fraise à rainer 8 mm', 'Serre-joints'],
+        markers: groov.filter((d) => d.f.lane === 0).map((d) => ({ p: [d.f.x + d.f.w / 2, d.f.y, D - 24], c: '', follow: 0 })),
+        text: ['Tracez deux rainures de 8 mm à 14 et 28 mm du bord avant, sur le fond de la case et sous le dessus.',
+          'Rainurez le fond sur 6 mm de profondeur, et le dessus sur 10 mm : ce jeu supplémentaire permet de soulever le panneau pour l’engager.',
+          'Faites un essai sur une chute : le panneau doit coulisser sans jeu mais sans forcer.',
+          'Engagez chaque panneau dans la rainure haute, soulevez, puis laissez-le redescendre dans la rainure basse.'] });
     }
     const drawers = fronts.filter((x) => x.f && x.f.kind === 'tiroir');
     if (drawers.length) {
@@ -1957,6 +1989,12 @@ function drawProjection() {
         g.fillStyle = pF; poly(g, [[hx, y], [fx, y - gr], [fx, y + hh + gr], [hx, y + hh]]); g.fill(); g.stroke();
         if (t < .05) handle2D(g, h, hf, x, y, w, hh, 'v', f.side, k);
         bb = [Math.min(x, fx), y - gr, Math.max(x + w, fx), y + hh + gr];
+      } else if (f.kind === 'coulissant' || f.kind === 'rainure') {
+        const run = f.lane ? -(f.w - clamp(f.w * .06, 20, 45)) * t : 0, [sx] = R(f.x + run, f.y, f.w, f.h);
+        g.fillStyle = pF; g.fillRect(sx, y, w, hh); g.strokeRect(sx, y, w, hh);
+        g.fillStyle = 'rgba(15,12,10,.55)'; const lx = f.lane ? sx + Math.max(3, w * .05) : sx + w - Math.max(3, w * .05) - Math.max(2, w * .025);
+        g.fillRect(lx, y + hh * .3, Math.max(2, w * .025), hh * .4);
+        bb = [Math.min(x, sx), y, Math.max(x + w, sx + w), y + hh];
       } else if (f.kind === 'abattant') {
         const a = t * 1.45, top = y + hh - hh * Math.cos(a), gw = w * .08 * Math.sin(a);
         g.fillStyle = pF; poly(g, [[x, y + hh], [x + w, y + hh], [x + w + gw, Math.min(top, y + hh - 3)], [x - gw, Math.min(top, y + hh - 3)]]); g.fill(); g.stroke();
@@ -2220,7 +2258,8 @@ function applyOpens(list, step) {
   list.forEach((o) => {
     const st = getSt(o.userData.key), u = o.userData;
     if (step) { const dd = st.target - st.t; if (Math.abs(dd) > .003) { st.t += dd * .16; moving = true; } else st.t = st.target; }
-    const t = st.t; if (u.kind === 'door') o.rotation.y = u.dir * t * 1.75; else if (u.kind === 'flap') o.rotation.x = t * 1.45; else o.position.z = u.base + t * u.dist;
+    const t = st.t; if (u.kind === 'door') o.rotation.y = u.dir * t * 1.75; else if (u.kind === 'flap') o.rotation.x = t * 1.45;
+    else if (u.kind === 'slidex') o.position.x = u.base + t * u.dist; else o.position.z = u.base + t * u.dist;
   });
   return moving;
 }
@@ -2285,6 +2324,19 @@ function addFront(G, f, L, M) {
     const hg = makeHandle(M.h, M.mH, 'v', f.w);
     if (M.h.top) hg.position.set(f.side === 'L' ? f.w / 2 : -f.w / 2, f.h - 14, ft); else hg.position.set(f.side === 'L' ? f.w - 40 : -(f.w - 40), f.h / 2, ft);
     piv.add(hg); register(piv, [panel, hg], { kind: 'door', dir: f.side === 'L' ? -1 : 1 }, f.key); return;
+  }
+  if (f.kind === 'coulissant' || f.kind === 'rainure') {
+    const th = f.th || 18, groove = f.kind === 'rainure';
+    // on rails the leaves hang in front of the carcass; in grooves they sit just inside it
+    const z = groove ? D - 14 - (1 - f.lane) * (th + 6) : D + 2 + f.lane * (th + 4);
+    const gr = new THREE.Group(); gr.position.set(f.x, f.y, z); G.add(gr);
+    const panel = bx(f.w, f.h, th, M.mF, 0, 0, 0, gr);
+    // a sliding leaf has no handle standing out, it would hit the other one: a recessed finger pull instead
+    const lead = f.lane ? 26 : f.w - 26;
+    const pull = new THREE.Mesh(new THREE.BoxGeometry(Math.max(14, th * 1.2), Math.min(f.h * .5, 150), 3), mat('dark'));
+    pull.position.set(lead, f.h / 2, th); gr.add(pull);
+    const run = f.w - clamp(f.w * .06, 20, 45);
+    register(gr, [panel, pull], { kind: 'slidex', dist: f.lane ? -run : 0, base: f.x }, f.key); return;
   }
   if (f.kind === 'abattant') {
     const piv = new THREE.Group(); piv.position.set(f.x, f.y, D); G.add(piv);

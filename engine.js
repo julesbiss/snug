@@ -582,7 +582,10 @@ function design(input) {
   const items = { ...defaults(project), ...(input.items || {}) };
   const shopsIn = new Set((input.shops || []).filter((s) => s !== 'Autoriser le mélange'));
   const mix = (input.shops || []).includes('Autoriser le mélange') || !input.shops;
-  const magasin = shopsIn.has('Leroy Merlin') || !shopsIn.size ? 'Leroy Merlin' : shopsIn.has('Castorama') ? 'Castorama' : 'Leroy Merlin';
+  // Castorama answers when the app looks up a product, so its lines carry a photo, a name and a direct link;
+  // Leroy Merlin refuses the lookup, so its lines stay bare. With both shops allowed, or none chosen, the
+  // materials go to Castorama for that reason alone. A shopper who ticked Leroy Merlin only still gets it.
+  const magasin = shopsIn.has('Castorama') || !shopsIn.size ? 'Castorama' : shopsIn.has('Leroy Merlin') ? 'Leroy Merlin' : 'Castorama';
   const zones = (input.zones || []).filter((z) => num(z.A) > 0 && num(z.B) > 0 && num(z.C) > 0);
   if (!zones.length) throw new Error('no_zone');
   const ctx = { project, items, custom: Array.isArray(input.custom) ? input.custom : [], zones, fab: input.fab || 'mixte', level: input.level || 'bricoleur', tools: new Set(input.tools || []), shops: shopsIn, mix, magasin,
