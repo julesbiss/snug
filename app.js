@@ -1274,7 +1274,7 @@ function renderCell() {
 function sheetGrab(g) {
   if (!g) return;
   let y0 = null;
-  const set = (full) => { $('#cellSheet').classList.toggle('full', full); S.cellFull = full; resize3D(); };
+  const set = (full) => { tap(8); $('#cellSheet').classList.toggle('full', full); S.cellFull = full; resize3D(); };
   g.addEventListener('pointerdown', (e) => { y0 = e.clientY; g.setPointerCapture(e.pointerId); });
   g.addEventListener('pointerup', (e) => {
     if (y0 === null) return; const d = e.clientY - y0; y0 = null;
@@ -1353,7 +1353,7 @@ function cellOp(op) {
     cols[ref.ci].largeur_mm = num(cols[ref.ci].largeur_mm) + num(cols[j].largeur_mm) + L.divT;
     cols.splice(j, 1); if (j < ref.ci) ref.ci = j; ref.ri = clamp(ref.ri, 0, cols[ref.ci].cases.length - 1);
   }
-  X.p.edited = true; E.state = {}; S.cellMsg = '';
+  X.p.edited = true; E.state = {}; S.cellMsg = ''; tap(12);
   [0, 1].forEach((kk) => { getSt(`${S.active}:${ref.mi}:${ref.ci}-${ref.ri}-${ref.pi || 0}:${kk}`).target = 1; }); // the case just changed opens, so the new door or drawer is seen working
   try { localStorage.setItem('snug.edited', '1'); } catch {}
   refreshAll(); if (E.inited) build3D(); renderCell(); renderTabs();
@@ -2710,7 +2710,7 @@ function buildSpots() {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'spot';
     b.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l4.5 4.5L8 20.5H3.5V16z"/></svg>';
     const cell = pl.userData.cell; b.setAttribute('aria-label', `Modifier la case ${cell.ci + 1}`);
-    b.onclick = (e) => { e.stopPropagation(); setEditMode(false); openCell(cell); };
+    b.onclick = (e) => { e.stopPropagation(); tap(10); setEditMode(false); openCell(cell); };
     box.appendChild(b); SPOT.items.push({ b, pl, cell });
   });
   placeSpots(true);
@@ -2859,7 +2859,10 @@ function gripRail(st, axis) {
     box.appendChild(d); st.ticks.push({ d, v });
   });
 }
-function gripRailOn(st, v) { (st.ticks || []).forEach((t) => t.d.classList.toggle('on', Math.abs(t.v - v) < 1)); }
+function gripRailOn(st, v) {
+  if (st.lit !== v) { if (st.lit !== undefined) tap(9); st.lit = v; }   // one tap per notch passed, like a ratchet
+  (st.ticks || []).forEach((t) => t.d.classList.toggle('on', Math.abs(t.v - v) < 1));
+}
 
 function gripDrag(b, o, axis) {
   let st = null;
@@ -3238,6 +3241,9 @@ $('#sNext').onclick = () => { S.nstep++; renderNotice(); };
 function readStore() { try { const v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
 function writeStore(list) { try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; } catch { return false; } }
 let toastT = null;
+/* A short tap under the finger where the phone allows it. iOS Safari has no vibration API, so this is
+   silent there; it costs nothing and every other phone gains the feel of a real control. */
+const tap = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms || 8); } catch {} };
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 function snapshot() {
   return { id: S.projId, name: S.projName, savedAt: Date.now(), step: S.step, project: S.project, fab: S.fab, itemsBy: S.itemsBy, customBy: S.customBy, ambiance: S.ambiance,
@@ -3300,6 +3306,10 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(-1);
+// the first screen is ready: let the launch mark fade out rather than cut
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  const b = $('#boot'); if (!b) return; b.style.opacity = '0'; setTimeout(() => b.remove(), 360);
+}));
 if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell, linesFor, caisFit, caisSys, caissonLines, frontsOf, layoutModule, noticeFor };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
