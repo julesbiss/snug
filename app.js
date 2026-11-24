@@ -146,7 +146,7 @@ function woodPixel(fb, u, v, A, B, tint) {
   // low contrast, plus fine straight pores. The old version drew tight parallel stripes, which read as "3D".
   const warp = fb(u * 1, v * 2, 1, 2, 3), low = fb(u, v, 1, 1, 2), fib = fb(u * 8, v * 128, 8, 128, 2), pores = fb(u * 4, v * 256, 4, 256, 1);
   const ring = Math.sin(2 * Math.PI * (v * 6 + warp * 2.2 + (u - .5) * (u - .5) * 1.5)), band = Math.pow(.5 + .5 * ring, 2.5);
-  const t = clamp(band * .22 + (low - .5) * .35 + (fib - .5) * .18 + (pores - .5) * .08 + .3, 0, 1), lum = (1 + (low - .5) * .08 - (pores > .72 ? .05 : 0)) * (tint || 1);
+  const t = clamp(band * .34 + (low - .5) * .42 + (fib - .5) * .26 + (pores - .5) * .12 + .26, 0, 1), lum = (1 + (low - .5) * .1 - (pores > .7 ? .07 : 0)) * (tint || 1);
   return [(A[0] + (B[0] - A[0]) * t) * lum, (A[1] + (B[1] - A[1]) * t) * lum, (A[2] + (B[2] - A[2]) * t) * lum];
 }
 function texCanvas(f, size) {
@@ -2177,25 +2177,70 @@ function anim2D() {
 const E = { ok: typeof THREE !== 'undefined', inited: false, running: false, framed: false, state: {}, opens: [], picks: [], mats: {} };
 function lin(hex) { return new THREE.Color(hex).convertSRGBToLinear(); }
 function woodTex(id) { const t = new THREE.CanvasTexture(texCanvas(finById(id), 512)); t.anisotropy = 8; t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; }
+/* The same drawing read as sheen instead of colour: dense late wood is harder and shinier than the soft
+   wood between the rings. Without it every panel had one flat gloss over it, which is what plastic does. */
+function sheenTex(id) {
+  const t = new THREE.CanvasTexture(texCanvas(finById(id), 512)); t.anisotropy = 4; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
 function mat(id) {
   if (E.mats[id]) return E.mats[id]; let m;
   if (id.startsWith('h:')) { const hf = hfinById(id.slice(2)); m = hf.wood ? new THREE.MeshStandardMaterial({ map: woodTex('chene'), roughness: .65 }) : new THREE.MeshStandardMaterial({ color: lin(hf.c), metalness: hf.metal, roughness: hf.rough }); }
   else if (id === 'leather') m = new THREE.MeshStandardMaterial({ color: lin('#7A4A2A'), roughness: .75 });
   else if (id === 'dark') m = new THREE.MeshStandardMaterial({ color: 0x141110, roughness: .9 });
-  else { const f = finById(id); m = f.wood ? new THREE.MeshStandardMaterial({ map: woodTex(f.id), roughness: .46, envMapIntensity: .8, vertexColors: true }) : new THREE.MeshStandardMaterial({ color: lin(f.c), roughness: .4, envMapIntensity: .95, map: woodTex(f.id), vertexColors: true }); if (!f.wood) m.color = new THREE.Color(0xffffff); }
+  else { const f = finById(id); m = f.wood ? new THREE.MeshStandardMaterial({ map: woodTex(f.id), roughnessMap: sheenTex(f.id), roughness: .62, envMapIntensity: .85, vertexColors: true }) : new THREE.MeshStandardMaterial({ color: lin(f.c), roughness: .45, envMapIntensity: .95, map: woodTex(f.id), roughnessMap: sheenTex(f.id), vertexColors: true }); if (!f.wood) m.color = new THREE.Color(0xffffff); }
   return (E.mats[id] = m);
 }
 const TILE = 640;
+/* The grain runs along the length of each piece and starts at a different place on the board for each one.
+   Worked out per vertex from the face normal, so a panel can be subdivided without breaking its wood. */
 function uvBox(geo, w, h, d, seed) {
-  const uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]], ox = (seed * .37) % 1, oy = (seed * .61) % 1;
-  for (let f = 0; f < 6; f++) { const [U, V] = dims[f], rot = V > U * 1.15; for (let k = 0; k < 4; k++) { const i = f * 4 + k, u = uv.getX(i), v = uv.getY(i); if (rot) uv.setXY(i, v * V / (TILE * 2.2) + ox, u * U / TILE + oy); else uv.setXY(i, u * U / (TILE * 2.2) + ox, v * V / TILE + oy); } }
+  const pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv;
+  const ox = (seed * .37) % 1, oy = (seed * .61) % 1;
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(nor.getX(i)), ny = Math.abs(nor.getY(i));
+    let u, v, U, V;
+    if (nx > .5) { u = pos.getZ(i); v = pos.getY(i); U = d; V = h; }
+    else if (ny > .5) { u = pos.getX(i); v = pos.getZ(i); U = w; V = d; }
+    else { u = pos.getX(i); v = pos.getY(i); U = w; V = h; }
+    if (V > U * 1.15) uv.setXY(i, v / (TILE * 2.2) + ox, u / TILE + oy);
+    else uv.setXY(i, u / (TILE * 2.2) + ox, v / TILE + oy);
+  }
   uv.needsUpdate = true;
 }
+/* The depth of the piece being built, so a panel knows how far inside the furniture each of its corners sits.
+   Set once per module; every box, front, drawer and prop below it inherits it. */
+let BX_D = 0;
 function bx(w, h, d, m, x, y, z, parent) {
-  const geo = new THREE.BoxGeometry(Math.max(w, 1), Math.max(h, 1), Math.max(d, 1)); uvBox(geo, Math.max(w, 1), Math.max(h, 1), Math.max(d, 1), Math.abs(x * 13 + y * 7 + z * 3) % 97 / 97);
+  const W = Math.max(w, 1), H = Math.max(h, 1), D2 = Math.max(d, 1);
+  // enough vertices across a panel to carry a gradient: the contact shadows below are painted on the mesh itself
+  const sg = (v) => clamp(Math.round(v / 70), 1, 8);
+  const geo = new THREE.BoxGeometry(W, H, D2, sg(W), sg(H), sg(D2));
+  uvBox(geo, W, H, D2, Math.abs(x * 13 + y * 7 + z * 3) % 97 / 97);
   // each panel comes from a different part of the board: a slight, fixed shift of tone per panel keeps them from looking cloned
-  if (m.vertexColors) { const seed = Math.abs(Math.round(x * 7 + y * 3 + z * 11 + w)) % 1000, r = rng(seed), lum = .95 + r() * .1, warm = .99 + r() * .02, n = geo.attributes.position.count, col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { col[i * 3] = lum * warm; col[i * 3 + 1] = lum; col[i * 3 + 2] = lum / warm; } geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); }
+  if (m.vertexColors) {
+    const seed = Math.abs(Math.round(x * 7 + y * 3 + z * 11 + w)) % 1000, r = rng(seed), lum = .95 + r() * .1, warm = .99 + r() * .02;
+    const pos = geo.attributes.position, nor = geo.attributes.normal, n = pos.count, col = new Float32Array(n * 3);
+    /* Light baked into the wood itself, which is what the scene was missing: a room lights the front edge of a
+       case and barely reaches its back, and a face turned towards the floor gets far less than one turned up.
+       Without it every surface came out at the same brightness, and the furniture read as moulded plastic. */
+    const R = 75;   // how far a contact shadow creeps out from a joint
+    for (let i = 0; i < n; i++) {
+      const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+      const depth = BX_D > 1 ? clamp((z + d / 2 + pz) / BX_D, 0, 1) : 1;
+      let a = BX_D > 1 ? .5 + .5 * Math.pow(depth, .7) : 1;
+      const nx = nor.getX(i), ny = nor.getY(i);
+      if (ny < -.5) a *= .74; else if (ny > .5) a *= 1.05;
+      /* Every edge of a panel butts against another one — except the one facing the room, which is why a
+         piece of furniture has a dark seam in each inner angle and a bright line along its front edge. */
+      let edge = 1e9;
+      if (Math.abs(ny) > .5) edge = Math.min(W / 2 - Math.abs(px), D2 / 2 + pz);
+      else if (Math.abs(nx) > .5) edge = Math.min(H / 2 - Math.abs(py), D2 / 2 + pz);
+      if (edge < R) a *= .58 + .42 * Math.pow(Math.max(0, edge) / R, .6);
+      const v = lum * a;
+      col[i * 3] = v * warm; col[i * 3 + 1] = v; col[i * 3 + 2] = v / warm;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  }
   const me = new THREE.Mesh(geo, m);
   me.position.set(x + w / 2, y + h / 2, z + d / 2); me.castShadow = true; me.receiveShadow = true; parent.add(me); return me;
 }
@@ -2378,7 +2423,7 @@ function applyOpens(list, step) {
   return moving;
 }
 function buildModule(G, L, mi, M, feet) {
-  const t = L.t, W = L.W, H = L.H, D = L.D;
+  const t = L.t, W = L.W, H = L.H, D = L.D; BX_D = D;
   if (L.legs > 0 && !L.raised) {
     if (feet.hidden) { bx(W - 2 * feet.inset, L.legs, 18, M.mS, feet.inset, 0, D - 18 - feet.inset, G); bx(18, L.legs, D - 90, M.mS, feet.inset, 0, 40, G); bx(18, L.legs, D - 90, M.mS, W - feet.inset - 18, 0, 40, G); }
     else legXs(L).forEach((x) => [40, D - 90].forEach((z) => leg3D(G, feet, L, M.mS, x, z, L.legs)));
