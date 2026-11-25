@@ -1244,7 +1244,7 @@ function renderCell() {
     <div class="chrow"><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="shorter" aria-label="Baisser de 2 cm">−</button><b class="chval">${R0(c.h).toLocaleString('fr-FR')} mm</b><button type="button" class="cbtn${n > 1 ? '' : ' no'}" data-op="taller" aria-label="Monter de 2 cm">+</button></div>
     <p class="clab">Couper cette case · ${R0(c.w).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('split', !rules.split)}${tile('splitH', c.w >= 320 && X.np < 3)}${tile('mergeH', X.np > 1)}</div>
-    <p class="clab">Réunir avec la case du dessus ou du dessous</p>
+    <p class="clab">Réunir avec la case voisine</p>
     <div class="ctiles two">${tile('mergeUp', ri < n - 1)}${tile('mergeDown', ri > 0)}</div>
     <p class="clab">Colonne ${ci + 1} sur ${nc} · ${R0(X.colW).toLocaleString('fr-FR')} mm de large</p>
     <div class="ctiles">${tile('colSplit', X.colW >= 380)}${tile('colMerge', nc > 1)}${tile('left', ci > 0)}${tile('right', ci < nc - 1)}</div>

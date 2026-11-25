@@ -30,23 +30,31 @@ button{font-family:inherit}
 .col{display:flex;flex-direction:column;gap:20px;min-width:0}
 .col.tight{gap:10px}
 h1,h2{margin:0;text-wrap:balance}
-h1{font-size:32px;font-weight:700;line-height:1.08;letter-spacing:-1.1px}
-h2{font-size:20px;font-weight:700;letter-spacing:-.4px}
+h1{font-size:32px;font-weight:720;line-height:1.05;letter-spacing:-1.3px}
+h2{font-size:20px;font-weight:700;letter-spacing:-.5px}
 p{margin:0}
 .head{display:flex;flex-direction:column;gap:8px}
-.eyebrow{font-size:12px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)}
-.lead{font-size:14.5px;color:var(--muted);max-width:44ch}
-.sublbl{font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+/* Technical-drawing voice, taken from the logo's own baseline: mono, uppercase, widely tracked, teal,
+   and opened by the end tick of a dimension line. Used for every small label in the app so the brand is
+   not just a logo in a corner. */
+.eyebrow,.sublbl,.clab,.celldock .clab{font-family:var(--f-num);font-size:11px;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--teal);display:flex;align-items:flex-start;gap:8px;line-height:1.45}
+.eyebrow::before,.sublbl::before,.clab::before,.celldock .clab::before{content:"";flex:none;width:12px;height:7px;
+  border-left:1.5px solid currentColor;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;
+  margin-top:5px;opacity:.55}
+.lead{font-size:14.5px;color:var(--soft-fg);max-width:44ch}
 .muted{color:var(--muted)}.soft{color:var(--soft-fg)}
 .small{font-size:13px}
 .mono{font-family:var(--f-num)}
 
 /* header + progress */
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-/* The wordmark is drawn as a mask, so it takes the colour of the text around it and stays crisp anywhere. */
-.logo{width:112px;height:20px;background:var(--ink);
-  -webkit-mask:url(brand/coteo-wordmark.png) left center/contain no-repeat;
-  mask:url(brand/coteo-wordmark.png) left center/contain no-repeat}
+/* The wordmark is vector and drawn as a mask, so it takes the colour of the text around it and stays sharp
+   at any size. The bitmap version turned to mush once reduced: its dimension lines fell under one pixel. */
+.logo{width:134px;height:24px;background:var(--ink);
+  -webkit-mask-image:url(brand/coteo-wordmark.svg);mask-image:url(brand/coteo-wordmark.svg);
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:left center;mask-position:left center;
+  -webkit-mask-size:contain;mask-size:contain}
 .logo i{display:none}
 /* The brand's own gradient, rebuilt from its five anchors. Used on the launch screen and the home header,
    so starting the app and arriving in it are the same picture. */
@@ -168,10 +176,10 @@ textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
 /* result: stage */
 .cfgtop{position:relative;background:var(--bg);display:flex;flex-direction:column;gap:12px;margin-left:calc(-1 * max(18px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(18px,env(safe-area-inset-right,0px)));min-width:0}
 .stagewrap{position:relative}
-.stage{position:relative;overflow:hidden;background:#DAD5CE}
+.stage{position:relative;overflow:hidden;background:#DED7CE}
 .stage canvas{display:block;width:100%;touch-action:none;cursor:grab}
 .stagewrap::after{content:"";position:absolute;inset:auto 0 0;height:70px;background:linear-gradient(180deg,rgba(244,242,238,0),var(--bg));pointer-events:none}
-#stagePhoto{border-radius:0;border:none;background:#DAD5CE}
+#stagePhoto{border-radius:0;border:none;background:#DED7CE}
 #stagePhoto canvas{max-height:min(420px,48vh);width:auto;max-width:100%;margin:0 auto}
 .overlay{position:absolute;left:14px;right:14px;display:flex;align-items:center;gap:8px;z-index:2}
 .overlay.top{top:12px}
@@ -186,8 +194,8 @@ textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .cfgnav{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:1px max(18px,env(safe-area-inset-right,0px)) 1px 0}
 .cfgnav::-webkit-scrollbar{display:none}
 .cfgnav button{all:unset;cursor:pointer;flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 14px 0 7px;border-radius:19px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;color:var(--muted)}
-.cfgnav button i{font-style:normal;width:24px;height:24px;border-radius:12px;background:var(--surface2);color:var(--soft-fg);display:grid;place-items:center;font-size:11.5px;font-weight:600;font-family:var(--f-num)}
-.cfgnav button.done i{background:var(--accent-soft);color:var(--accent)}
+.cfgnav button i{font-style:normal;width:24px;height:24px;border-radius:12px;background:var(--surface2);color:var(--teal);display:grid;place-items:center;font-size:11.5px;font-weight:600;font-family:var(--f-num)}
+.cfgnav button.done i{background:rgba(54,112,114,.12);color:var(--teal)}
 .cfgnav button[aria-current="step"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .cfgnav button[aria-current="step"] i{background:var(--bg);color:var(--fg)}
 .cfgnav button:focus-visible{outline:2px solid var(--accent)}
@@ -482,7 +490,7 @@ body.cfg .navbar{border-bottom:1px solid var(--line);padding-block:8px}
 .ctypes button.no,.cbtn.no,.switchrow.no{opacity:.38;text-decoration:none}
 .celldock .cmsg{margin:0;font-size:13px;color:var(--warn);background:var(--warn-soft);border-radius:10px;padding:9px 11px}
 .celldock .cmsg.empty{display:none}
-.celldock .clab{font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:2px 0 -4px}
+.celldock .clab{margin:2px 0 -4px}
 body.celledit .navbar,body.celledit .panes,body.celledit .bar{display:none}
 body.celledit{overflow:hidden}
 body.celledit .wrap{padding-bottom:0}
@@ -514,13 +522,14 @@ section[data-step]:not([hidden]){animation:stepin .26s ease both}
 body.cfg section[data-step]:not([hidden]){animation:none}
 @media (prefers-reduced-motion:reduce){section[data-step]:not([hidden]){animation:none}}
 .homepg{display:flex;flex-direction:column;gap:26px}
-.hero2{position:relative;border-radius:22px;overflow:hidden;background:#DAD5CE;min-height:440px;display:flex;align-items:flex-end;box-shadow:0 1px 0 var(--line)}
+.hero2{position:relative;border-radius:22px;overflow:hidden;background:#DED7CE;min-height:440px;display:flex;align-items:flex-end;box-shadow:0 1px 0 var(--line)}
 .hero2 img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero2::after{content:"";position:absolute;inset:38% 0 0;background:linear-gradient(180deg,rgba(20,18,15,0),rgba(20,18,15,.78))}
 .herotxt{position:relative;z-index:1;padding:20px;display:flex;flex-direction:column;gap:10px;color:#FFFFFF;width:100%}
-.herologo{width:148px;height:33px;background:#FFFFFF;margin-bottom:2px;
-  -webkit-mask:url(brand/coteo-lockup.png) left center/contain no-repeat;
-  mask:url(brand/coteo-lockup.png) left center/contain no-repeat}
+.herologo{width:196px;height:45px;background:#FFFFFF;margin-bottom:6px;
+  -webkit-mask-image:url(brand/coteo-lockup.svg);mask-image:url(brand/coteo-lockup.svg);
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:left center;mask-position:left center;
+  -webkit-mask-size:contain;mask-size:contain}
 .herotxt h1{font-size:28px;line-height:1.1;letter-spacing:-.8px;max-width:15ch}
 .herotxt p{font-size:14.5px;opacity:.88;max-width:34ch}
 .herotxt .btn{align-self:stretch;margin-top:6px;background:#FFFFFF;color:var(--ink)}
