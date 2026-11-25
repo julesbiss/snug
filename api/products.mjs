@@ -1,4 +1,4 @@
-// SNUG — finds the real product (photo, name, price, direct link) for each line of the shopping list.
+// COTEO — finds the real product (photo, name, price, direct link) for each line of the shopping list.
 // Private test version: it reads the shops' public search pages. IKEA answers with clean JSON;
 // Leroy Merlin and Castorama often block automated reads, in which case the app keeps its search link.
 

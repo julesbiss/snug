@@ -1,4 +1,4 @@
-// SNUG — optional AI helper, using Google Gemini's free tier.
+// COTEO — optional AI helper, using Google Gemini's free tier.
 // Two fixed tasks only: read a room photo, or turn a free-text request into objects to store.
 // The design itself (sizes, prices, notice) always stays with the rules engine in the app.
 //

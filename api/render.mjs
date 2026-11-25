@@ -1,4 +1,4 @@
-// SNUG — optional photorealistic render, using Cloudflare Workers AI's free daily allowance (FLUX.2 klein).
+// COTEO — optional photorealistic render, using Cloudflare Workers AI's free daily allowance (FLUX.2 klein).
 // The app sends three small images: the room photo, the same photo with the designed furniture roughly placed,
 // and a 3D view of that furniture. The model returns one photo where the new furniture replaces the old one.
 //

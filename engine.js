@@ -1,4 +1,4 @@
-/* SNUG design engine.
+/* COTEO design engine.
    Turns a project type, the things to store and the measured zones into three furniture plans
    (Économique, Équilibrée, Optimale). Pure rules, no network: the same input always gives the same plans.
    Plans use the app's format: modules → colonnes (left to right) → cases (bottom to top), all in mm. */

@@ -264,23 +264,23 @@ function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y
 function head(g, x1, y1, x2, y2, s) { const a = Math.atan2(y2 - y1, x2 - x1); g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 - s * Math.cos(a - .45), y2 - s * Math.sin(a - .45)); g.lineTo(x2 - s * Math.cos(a + .45), y2 - s * Math.sin(a + .45)); g.closePath(); g.fill(); }
 function arrow(g, x1, y1, x2, y2, s) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); head(g, x1, y1, x2, y2, s); head(g, x2, y2, x1, y1, s); }
 function badge(g, x, y, t, r) {
-  g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = '#0E0F11'; g.fill(); g.lineWidth = r * .16; g.strokeStyle = '#E9B26B'; g.stroke();
-  g.fillStyle = '#E9B26B'; g.font = `700 ${Math.round(r * 1.05)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + r * .06); g.restore();
+  g.save(); g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = '#0E0F11'; g.fill(); g.lineWidth = r * .16; g.strokeStyle = '#FA4800'; g.stroke();
+  g.fillStyle = '#FA4800'; g.font = `700 ${Math.round(r * 1.05)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, x, y + r * .06); g.restore();
 }
 /* Zones on the photo: the selected one has round handles in its corners and labelled dimensions that can be tapped. */
 const fmtMM = (v) => (pos(v) ? R0(pos(v)).toLocaleString('fr-FR') : '?');
 function pill(g, x, y, txt, k, strong) {
   g.font = `700 ${Math.round(12.5 * k)}px "Geist", system-ui, sans-serif`;
   const w = g.measureText(txt).width + 16 * k, h = 24 * k;
-  g.fillStyle = strong ? '#E9B26B' : 'rgba(14,15,17,.85)'; rr(g, x - w / 2, y - h / 2, w, h, h / 2); g.fill();
-  if (!strong) { g.strokeStyle = '#E9B26B'; g.lineWidth = 1.2 * k; g.stroke(); }
+  g.fillStyle = strong ? '#FA4800' : 'rgba(14,15,17,.85)'; rr(g, x - w / 2, y - h / 2, w, h, h / 2); g.fill();
+  if (!strong) { g.strokeStyle = '#FA4800'; g.lineWidth = 1.2 * k; g.stroke(); }
   g.fillStyle = strong ? '#17130C' : '#F2F1EE'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, x, y + .5 * k);
   return { x: x - w / 2, y: y - h / 2, w, h };
 }
 /* ================= zones in perspective =================
    A zone is the rectangle of wall the furniture stands against, as seen in the photo: 4 free corners
    (z.q, normalised, top-left → top-right → bottom-right → bottom-left) plus a depth pulled toward the viewer.
-   From the shape of that rectangle SNUG recovers the camera (focal length, position), hence the real
+   From the shape of that rectangle COTEO recovers the camera (focal length, position), hence the real
    proportions of the space: one typed measure gives the two others, and the furniture is later rendered
    in the photo with the very same camera. z.x/z.y/z.w/z.h stay the bounding box of the 4 corners. */
 const R10 = (v) => Math.round(v / 10) * 10;
@@ -365,7 +365,7 @@ function syncZoneInputs(i) {
   ['A', 'B', 'C'].forEach((k) => { const inp = $(`#z${i}${k}`); if (!inp) return; if (document.activeElement !== inp) inp.value = z[k]; const auto = !m[k] && pos(z[k]); inp.closest('.cote').classList.toggle('auto', !!auto); });
 }
 function drawZonesOn(g, W, H, zones, sel, full, k) {
-  k = k || 1; const hits = []; const GOLD = '#E9B26B';
+  k = k || 1; const hits = []; const GOLD = '#FA4800';
   const path = (pts) => { g.beginPath(); pts.forEach(([a, b], j) => (j ? g.lineTo(a, b) : g.moveTo(a, b))); g.closePath(); };
   zones.forEach((z, i) => {
     const on = !full && i === sel, P = zonePose(z, W, H), dr = zDepth(z), m = zMan(z);
@@ -381,15 +381,15 @@ function drawZonesOn(g, W, H, zones, sel, full, k) {
       F(P.r1, -1, [[0, 0, 0], [0, 1, 0], [0, 1, dr], [0, 0, dr]], [bk[0], bk[3], fr[3], fr[0]], 'rgba(196,140,72,A)'),
       F(P.r1, 1, [[1, 0, 0], [1, 1, 0], [1, 1, dr], [1, 0, dr]], [bk[1], bk[2], fr[2], fr[1]], 'rgba(196,140,72,A)'),
       F(P.r2, -1, [[0, 0, 0], [1, 0, 0], [1, 0, dr], [0, 0, dr]], [bk[0], bk[1], fr[1], fr[0]], 'rgba(255,222,170,A)'),
-      F(P.r3, -1, q3(dr), fr, 'rgba(233,178,107,A)')];
+      F(P.r3, -1, q3(dr), fr, 'rgba(250,72,0,A)')];
     const al = on ? 1 : .6;
     path([bk[3], bk[2], fr[2], fr[3]]); g.fillStyle = `rgba(0,0,0,${.2 * al})`; g.fill(); // where it stands on the floor
-    g.setLineDash([5 * k, 5 * k]); g.strokeStyle = `rgba(233,178,107,${.55 * al})`; g.lineWidth = 1.1 * k;
+    g.setLineDash([5 * k, 5 * k]); g.strokeStyle = `rgba(250,72,0,${.55 * al})`; g.lineWidth = 1.1 * k;
     path(bk); g.stroke(); path(fr); g.stroke(); bk.forEach((pt, j) => { g.beginPath(); g.moveTo(...pt); g.lineTo(...fr[j]); g.stroke(); }); g.setLineDash([]);
-    faces.filter((f) => f.vis).forEach((f, j) => { path(f.pts); g.fillStyle = f.tone.replace('A', String((f.tone.includes('255,222') ? .5 : f.tone.includes('196,') ? .46 : .34) * al)); g.fill(); g.strokeStyle = on ? GOLD : 'rgba(233,178,107,.8)'; g.lineWidth = (on ? 2 : 1.4) * k; g.stroke(); });
+    faces.filter((f) => f.vis).forEach((f, j) => { path(f.pts); g.fillStyle = f.tone.replace('A', String((f.tone.includes('255,222') ? .5 : f.tone.includes('196,') ? .46 : .34) * al)); g.fill(); g.strokeStyle = on ? GOLD : 'rgba(250,72,0,.8)'; g.lineWidth = (on ? 2 : 1.4) * k; g.stroke(); });
     // number
     const r = 10 * k, nx = (fr[0][0] * 3 + fr[2][0]) / 4, ny = (fr[0][1] * 3 + fr[2][1]) / 4;
-    g.fillStyle = on ? GOLD : 'rgba(233,178,107,.85)'; g.beginPath(); g.arc(nx, ny, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = on ? GOLD : 'rgba(250,72,0,.85)'; g.beginPath(); g.arc(nx, ny, r, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#17130C'; g.font = `700 ${Math.round(12 * k)}px "Geist", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), nx, ny + .5 * k);
     if (on) {
       // the 4 corners on the wall
@@ -426,7 +426,7 @@ function drawCotes() {
   const cv = $('#cv1'); const g = drawPhoto(cv); const W = cv.width, H = cv.height, k = W / Math.max(200, cv.clientWidth || 360);
   S.zoneLabels = drawZonesOn(g, W, H, S.zones, S.sel, false, k) || [];
   const d = S.drawRect;
-  if (d) { g.save(); g.fillStyle = 'rgba(233,178,107,.14)'; g.strokeStyle = '#E9B26B'; g.lineWidth = 2 * k; g.setLineDash([7 * k, 5 * k]); const x = Math.min(d.x0, d.x1) * W, y = Math.min(d.y0, d.y1) * H, w = Math.abs(d.x1 - d.x0) * W, h = Math.abs(d.y1 - d.y0) * H; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h); g.restore(); }
+  if (d) { g.save(); g.fillStyle = 'rgba(250,72,0,.14)'; g.strokeStyle = '#FA4800'; g.lineWidth = 2 * k; g.setLineDash([7 * k, 5 * k]); const x = Math.min(d.x0, d.x1) * W, y = Math.min(d.y0, d.y1) * H, w = Math.abs(d.x1 - d.x0) * W, h = Math.abs(d.y1 - d.y0) * H; g.fillRect(x, y, w, h); g.strokeRect(x, y, w, h); g.restore(); }
   const lp = S.loupe;
   if (lp && S.photo && S.photo.naturalWidth) { // magnifier above the finger, to land a corner precisely
     const R = Math.min(64 * k, H * .24), Z = 2.4, px = lp.x * W, py = lp.y * H, cx = px < W / 2 ? W - R - 8 * k : R + 8 * k, cy = py < H / 2 ? H - R - 8 * k : R + 8 * k; // in the opposite corner of the photo, never under the finger
@@ -434,10 +434,10 @@ function drawCotes() {
     g.fillStyle = '#0E0F11'; g.fillRect(cx - R, cy - R, R * 2, R * 2);
     { const nw = S.photo.naturalWidth, nh = S.photo.naturalHeight, hw2 = R / Z; g.drawImage(S.photo, (px - hw2) / W * nw, (py - hw2) / H * nh, 2 * hw2 / W * nw, 2 * hw2 / H * nh, cx - R, cy - R, 2 * R, 2 * R); }
     g.translate(cx, cy); g.scale(Z, Z); g.translate(-px, -py);
-    const z = S.zones[S.sel]; if (z) { g.strokeStyle = '#E9B26B'; g.lineWidth = 1.4 * k / Z; g.beginPath(); zq(z).forEach(([a, b], j) => (j ? g.lineTo(a * W, b * H) : g.moveTo(a * W, b * H))); g.closePath(); g.stroke(); }
+    const z = S.zones[S.sel]; if (z) { g.strokeStyle = '#FA4800'; g.lineWidth = 1.4 * k / Z; g.beginPath(); zq(z).forEach(([a, b], j) => (j ? g.lineTo(a * W, b * H) : g.moveTo(a * W, b * H))); g.closePath(); g.stroke(); }
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.restore(); g.save();
-    g.strokeStyle = '#E9B26B'; g.lineWidth = 3 * k; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = '#FA4800'; g.lineWidth = 3 * k; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.stroke();
     g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 1.2 * k; g.beginPath(); g.moveTo(cx - 12 * k, cy); g.lineTo(cx - 3 * k, cy); g.moveTo(cx + 3 * k, cy); g.lineTo(cx + 12 * k, cy); g.moveTo(cx, cy - 12 * k); g.lineTo(cx, cy - 3 * k); g.moveTo(cx, cy + 3 * k); g.lineTo(cx, cy + 12 * k); g.stroke(); g.restore();
   }
 }
@@ -535,17 +535,17 @@ const DIM_SVG = `<svg class="dimsvg" viewBox="0 0 300 186" role="img" aria-label
   <path d="M62 40 L92 16 L236 16 L206 40 Z" fill="#1F2227" stroke="#C9CACD" stroke-width="2" stroke-linejoin="round"/>
   <path d="M206 40 L236 16 L236 90 L206 114 Z" fill="#191B1F" stroke="#C9CACD" stroke-width="2" stroke-linejoin="round"/>
   <rect x="62" y="40" width="144" height="74" fill="#24272D" stroke="#C9CACD" stroke-width="2"/>
-  <g stroke="#E9B26B" stroke-width="2.4" fill="#E9B26B" stroke-linecap="round">
+  <g stroke="#2E6E78" stroke-width="2.4" fill="#FA4800" stroke-linecap="round">
     <line x1="64" y1="130" x2="204" y2="130"/><path d="M64 130l8-5v10z M204 130l-8-5v10z" stroke="none"/>
     <line x1="44" y1="42" x2="44" y2="112"/><path d="M44 42l-5 8h10z M44 112l-5-8h10z" stroke="none"/>
     <line x1="246" y1="94" x2="268" y2="76"/><path d="M246 94l9-1-5-7z M268 76l-9 1 5 7z" stroke="none"/>
     <line x1="222" y1="108" x2="222" y2="172" stroke-dasharray="4 4"/><path d="M222 172l-5-8h10z M222 108l-5 8h10z" stroke="none"/>
   </g>
   <g font-family="Geist, sans-serif" font-weight="700" font-size="15" text-anchor="middle">
-    <circle cx="134" cy="130" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="134" y="135" fill="#E9B26B">A</text>
-    <circle cx="44" cy="77" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="44" y="82" fill="#E9B26B">B</text>
-    <circle cx="278" cy="68" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="278" y="73" fill="#E9B26B">C</text>
-    <circle cx="246" cy="146" r="12" fill="#0E0F11" stroke="#E9B26B" stroke-width="2"/><text x="246" y="151" fill="#E9B26B">D</text>
+    <circle cx="134" cy="130" r="12" fill="#0E0F11" stroke="#2E6E78" stroke-width="2"/><text x="134" y="135" fill="#FA4800">A</text>
+    <circle cx="44" cy="77" r="12" fill="#0E0F11" stroke="#2E6E78" stroke-width="2"/><text x="44" y="82" fill="#FA4800">B</text>
+    <circle cx="278" cy="68" r="12" fill="#0E0F11" stroke="#2E6E78" stroke-width="2"/><text x="278" y="73" fill="#FA4800">C</text>
+    <circle cx="246" cy="146" r="12" fill="#0E0F11" stroke="#2E6E78" stroke-width="2"/><text x="246" y="151" fill="#FA4800">D</text>
   </g></svg>`;
 const DIMS = [['A', 'Largeur', 'La place disponible, d’un bord à l’autre'], ['B', 'Hauteur', 'La hauteur maximale du meuble'],
   ['C', 'Profondeur', 'Depuis le mur, sans gêner le passage'], ['D', 'Hauteur au-dessus du sol', '0 si le meuble est posé au sol']];
@@ -556,7 +556,7 @@ function renderZones() {
   $('.zonetip').hidden = !S.zones.length || !!S.zonesTouched;
   S.zones.forEach((z, i) => {
     const card = document.createElement('div'); card.className = 'card zonecard' + (i === S.sel ? ' sel' : '');
-    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<p class="onemeasure"><b>Une seule mesure suffit.</b> Entrez la largeur, la hauteur ou la profondeur : SNUG calcule les deux autres d’après la photo. Vous pouvez les corriger au mètre.</p><div class="cotes"></div>`;
+    card.innerHTML = `<div class="zhead"><span class="znum">${i + 1}</span><b>Zone ${i + 1}</b><span class="sp"></span><button type="button" class="link danger" data-act="del">Supprimer</button></div>${i === 0 || i === S.sel ? DIM_SVG : ''}<p class="onemeasure"><b>Une seule mesure suffit.</b> Entrez la largeur, la hauteur ou la profondeur : COTEO calcule les deux autres d’après la photo. Vous pouvez les corriger au mètre.</p><div class="cotes"></div>`;
     const ct = card.querySelector('.cotes');
     DIMS.forEach(([k, l, sub]) => {
       const id = `z${i}${k}`; const row = document.createElement('div'); row.className = 'cote';
@@ -1086,7 +1086,7 @@ async function makePdf(kind) {
   const N = noticeFor(p, cu), lines = linesFor(S.active), total = lines.reduce((a, l) => a + priceOf(l), 0);
   const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
   // cover
-  text('SNUG', 9, { bold: true, color: gold, after: 1 });
+  text('COTEO', 9, { bold: true, color: gold, after: 1 });
   text(`${projectName()} · version ${p.nom}`, 20, { bold: true, after: 2 });
   text(`${new Date().toLocaleDateString('fr-FR')} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`, 10, { color: mute, after: 4 });
   try { const img = productShot(); if (img) { const h = CW * 372 / 496; need(h); doc.addImage('data:image/jpeg;base64,' + img, 'JPEG', M, y, CW, h); y += h + 4; } } catch {}
@@ -1130,8 +1130,8 @@ async function makePdf(kind) {
     S.nstep = keep; if (S.pane === 'notice') renderNotice();
   }
   const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(...mute); doc.text(pdfTxt(`SNUG · ${projectName()} · ${i}/${pages}`), PW - M, 297 - 8, { align: 'right' }); }
-  const name = `SNUG ${projectName()} ${p.nom} - ${kind === 'list' ? 'liste de courses' : kind === 'notice' ? 'notice' : 'dossier'}.pdf`.replace(/[\/\\:]/g, '-');
+  for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(...mute); doc.text(pdfTxt(`COTEO · ${projectName()} · ${i}/${pages}`), PW - M, 297 - 8, { align: 'right' }); }
+  const name = `COTEO ${projectName()} ${p.nom} - ${kind === 'list' ? 'liste de courses' : kind === 'notice' ? 'notice' : 'dossier'}.pdf`.replace(/[\/\\:]/g, '-');
   const blob = doc.output('blob'), file = new File([blob], name, { type: 'application/pdf' });
   // on a phone, the share sheet offers "Save to Files"; elsewhere the file is downloaded
   if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1409,7 +1409,7 @@ function generate() {
     S.result.forEach((_, i) => initCustom(i));
     S.active = 1; renderResult();
   } catch (e) {
-    if (window.SNUG_DEBUG) console.error('generate', e);
+    if (window.COTEO_DEBUG) console.error('generate', e);
     $('#result').hidden = true; $('#errBox').textContent = 'Impossible de concevoir ce meuble avec ces cotes. Vérifiez la largeur, la hauteur et la profondeur de chaque zone.'; $('#errBox').hidden = false;
   }
 }
@@ -1866,7 +1866,7 @@ async function loadProducts(lines) {
   } catch { S.prodFail = true; } finally { prodBusy = false; if (S.step === 4 && currentProp()) { renderList(); renderTabs(); } }
 }
 
-/* Express basket: SNUG walks through the articles shop by shop. One tap opens the product on the shop's site,
+/* Express basket: COTEO walks through the articles shop by shop. One tap opens the product on the shop's site,
    you tap "Ajouter au panier" there and come back: the article is ticked and the next one is ready.
    Progress is kept in this browser, so it survives the phone reloading the app. */
 const CKEY = 'snug.cart.v1'; let CART = {}; try { CART = JSON.parse(localStorage.getItem(CKEY) || '{}') || {}; } catch { CART = {}; }
@@ -1891,7 +1891,7 @@ function renderCart() {
       <div class="xrow">${p && p.image ? `<img src="${escH(p.image)}" alt="" referrerpolicy="no-referrer">` : '<i></i>'}<div class="ct"><b>${escH(cur.article)}</b>${p && p.name ? `<span>${escH(p.name)}</span>` : ''}<span>${eur(cur.prix)}${p && p.ref ? ' · réf. ' + escH(p.ref) : ''}</span></div></div>
       <div class="xqty"><span>Quantité à ajouter</span><b>${cur.qte}</b></div>
       <a class="btn primary xopen" id="xOpen" href="${escH(linkOf(cur))}" target="_blank" rel="noopener">${p && p.url ? 'Ouvrir le produit' : 'Chercher le produit'} chez ${escH(sh)} ↗</a>
-      <p class="muted small">Sur le site, touchez « Ajouter au panier »${cur.qte > 1 ? ` avec la quantité ${cur.qte}` : ''}, puis revenez ici : SNUG coche l’article et prépare le suivant.</p>
+      <p class="muted small">Sur le site, touchez « Ajouter au panier »${cur.qte > 1 ? ` avec la quantité ${cur.qte}` : ''}, puis revenez ici : COTEO coche l’article et prépare le suivant.</p>
       <div class="xsub"><button type="button" class="btn ghost sm" id="xDone">Déjà ajouté</button><button type="button" class="btn ghost sm" id="xSkip">Passer cet article</button></div>
       ${cartUndo ? `<p class="xundo">✓ ${escH(cartUndo.name)} coché <button type="button" id="xUndo">Annuler</button></p>` : ''}
     </div>`;
@@ -3310,7 +3310,7 @@ show(-1);
 requestAnimationFrame(() => requestAnimationFrame(() => {
   const b = $('#boot'); if (!b) return; b.style.opacity = '0'; setTimeout(() => b.remove(), 360);
 }));
-if (new URLSearchParams(location.search).has('debug')) window.SNUG_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell, linesFor, caisFit, caisSys, caissonLines, frontsOf, layoutModule, noticeFor };
+if (new URLSearchParams(location.search).has('debug')) window.COTEO_DEBUG = { E, S, PH, T, setPhoto, zonePose, ACC, renderResult, generate, drawPhotoView, cellOp, renderCell, linesFor, caisFit, caisSys, caissonLines, frontsOf, layoutModule, noticeFor };
 /* Developer hook used to render the preview pictures of the project cards: ?shot=tv */
 (function () {
   const id = new URLSearchParams(location.search).get('shot'); if (!id) return;

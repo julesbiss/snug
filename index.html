@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>SNUG · Meubles sur mesure</title>
-<meta name="description" content="Prenez une photo, mesurez, dites ce qu'il faut ranger : trois meubles sur mesure avec la liste de courses et la notice de montage.">
-<meta name="theme-color" content="#F4F2EE">
+<title>COTEO · Vos cotes, votre meuble</title>
+<meta name="description" content="Vos cotes, votre meuble. Une photo, vos mesures, et trois meubles sur mesure avec la liste de courses et la notice de montage.">
+<meta name="theme-color" content="#F5F3F0">
 <meta name="color-scheme" content="light">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="SNUG">
+<meta name="apple-mobile-web-app-title" content="COTEO">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..800&family=Geist+Mono:wght@500;600&display=swap">
 <!-- iOS shows a blank page while a home-screen app starts unless it is handed an image of the exact device size -->
@@ -33,12 +33,12 @@
 <body>
 <!-- Shown before the stylesheet and the fonts land, so the app never starts on a blank white page.
      Removed by the app once it has painted, and by the timer below if the script never runs. -->
-<div id="boot" aria-hidden="true" style="position:fixed;inset:0;z-index:99;background:#F4F2EE;display:grid;place-items:center;transition:opacity .3s ease"><svg width="78" height="78" viewBox="0 0 512 512" aria-hidden="true"><path fill="#17191C" d="M304 148v49q-37-14-72-14-26 0-39 8t-13 22q0 13 11 20t44 15q53 12 74 30t21 51q0 40-30 63t-82 23q-45 0-82-13v-51q42 17 80 17 28 0 42-8.5t14-24.5q0-14-11.5-21.5T214 291q-50-11-71-29t-21-50q0-39 29-61.5t79-22.5q39 0 74 20z"/><rect x="350" y="94" width="58" height="58" rx="14" fill="#B9782A"/></svg></div>
+<div id="boot" aria-hidden="true" style="position:fixed;inset:0;z-index:99;display:grid;place-items:center;transition:opacity .3s ease;background-color:#0C3A4A;background-image:radial-gradient(120% 95% at 4% 4%,#6E0B06 0%,rgba(110,11,6,0) 55%),radial-gradient(95% 80% at 44% 8%,#FA4800 0%,rgba(250,72,0,0) 52%),radial-gradient(85% 75% at 92% 10%,#DCEAE8 0%,rgba(220,234,232,0) 55%),radial-gradient(95% 85% at 98% 60%,#1C7F8C 0%,rgba(28,127,140,0) 58%),radial-gradient(110% 95% at 8% 98%,#03111E 0%,rgba(3,17,30,0) 62%)"><img src="brand/coteo-lockup.png" alt="COTEO · vos cotes, votre meuble" style="width:62%;max-width:420px;height:auto"></div>
 <script>setTimeout(function(){var b=document.getElementById("boot");if(b)b.remove();},6000)</script>
 <div class="wrap">
   <header class="top">
     <button class="ibtn" id="homeBtn" aria-label="Retour à l’accueil" title="Accueil" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-    <div class="logo" id="logo" aria-label="SNUG">SNUG<i></i></div>
+    <div class="logo" id="logo" role="img" aria-label="COTEO"></div>
     <div class="apptitle" id="appTitle" hidden><b></b><span></span></div>
     <div class="hbtns">
       <button class="ibtn" id="projBtn" hidden aria-label="Mes projets" title="Mes projets"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><rect x="14" y="15" width="7" height="5" rx="1.5"/></svg></button>
@@ -59,6 +59,7 @@
       <div class="hero2">
         <img src="previews/biblio.jpg" alt="" width="640" height="400">
         <div class="herotxt">
+          <div class="herologo" role="img" aria-label="COTEO · vos cotes, votre meuble"></div>
           <h1>Votre meuble sur mesure, à partir d’une photo</h1>
           <p>Trois propositions chiffrées, la liste de courses et la notice de montage.</p>
           <button type="button" class="btn primary" id="homeNew"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Créer un meuble</button>
@@ -100,7 +101,7 @@
   <section data-step="1" hidden>
     <div class="col">
       <div class="head"><p class="eyebrow">Les cotes</p><h1>Dessinez et mesurez</h1>
-        <p class="lead">Tracez l’emplacement du meuble sur le mur, même si la photo est de biais. Donnez une seule mesure&nbsp;: SNUG calcule les autres.</p></div>
+        <p class="lead">Tracez l’emplacement du meuble sur le mur, même si la photo est de biais. Donnez une seule mesure&nbsp;: COTEO calcule les autres.</p></div>
       <div class="photo zphoto"><canvas id="cv1" width="1000" height="700" aria-label="Zones du meuble et cotes à mesurer"></canvas>
         <button type="button" class="drawstart" id="drawStart" hidden><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4.5-1L19 8.5 15.5 5 5 15.5 4 20z"/><path d="M13.5 7l3.5 3.5"/></svg><b>Dessiner l’emplacement</b><span>D’un trait de doigt sur la photo</span></button>
         <div class="drawbanner" id="drawBanner" hidden><span>Glissez le doigt en diagonale sur l’emplacement, contre le mur</span><button type="button" id="drawCancel">Annuler</button></div></div>

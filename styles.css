@@ -1,14 +1,17 @@
-/* SNUG · Boutique. A light, quiet interface so the furniture and the real product photos carry the page:
-   warm off-white paper, white cards with hairline borders, near-black type, one brass accent kept for selection,
-   black for the main action. Geist type, tabular numbers. */
+/* COTEO · vos cotes, votre meuble. A light, quiet interface so the furniture and the real product photos
+   carry the page: warm off-white paper, white cards with hairline borders, deep petrol type, and the orange
+   of the brand kept for one thing at a time — what is selected, and what to do next. Geist, tabular numbers.
+   The four colours come straight from the brand sheet: petrol #11363E, orange #FA4800, teal #367072,
+   greige #C8BEB5; the greys below are tints of those two neutrals rather than plain grey. */
 :root{
-  --bg:#F4F2EE; --surface:#FFFFFF; --surface2:#F7F5F1; --line:#E6E2DB; --line2:#D5D0C7;
-  --fg:#17191C; --soft-fg:#4A4E56; --muted:#7A7E86;
-  --accent:#B9782A; --accent-hi:#8F5A1B; --accent-soft:rgba(185,120,42,.10); --on-accent:#FFFFFF;
-  --ink:#17191C; --on-ink:#FFFFFF;
-  --cote:#E9B26B; --cote-ink:#F3CB92; --cote-soft:rgba(233,178,107,.10);
-  --good:#1F7A4D; --good-soft:rgba(31,122,77,.10); --warn:#8A5A12; --warn-soft:rgba(185,120,42,.10); --bad:#B23B3B; --bad-soft:rgba(178,59,59,.08);
-  --glass:rgba(255,255,255,.78); --glass-line:rgba(0,0,0,.08);
+  --bg:#F5F3F0; --surface:#FFFFFF; --surface2:#F2EFEB; --line:#E5E0D9; --line2:#D2CAC0;
+  --fg:#11363E; --soft-fg:#3D5B63; --muted:#78898D;
+  --accent:#FA4800; --accent-hi:#C63800; --accent-soft:rgba(250,72,0,.10); --on-accent:#FFFFFF;
+  --ink:#11363E; --on-ink:#FFFFFF;
+  --teal:#367072; --greige:#C8BEB5;
+  --cote:#FA4800; --cote-ink:#FF8A5A; --cote-soft:rgba(250,72,0,.10);
+  --good:#1F7A4D; --good-soft:rgba(31,122,77,.10); --warn:#9A5410; --warn-soft:rgba(154,84,16,.10); --bad:#C0392B; --bad-soft:rgba(192,57,43,.08);
+  --glass:rgba(255,255,255,.80); --glass-line:rgba(17,54,62,.10);
   --f-ui:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;
   --f-num:'Geist Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
   --r-lg:16px; --r-md:12px; --r-sm:10px;
@@ -40,8 +43,19 @@ p{margin:0}
 
 /* header + progress */
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.logo{font-weight:800;font-size:19px;letter-spacing:3px;display:flex;align-items:center;gap:6px}
-.logo i{width:7px;height:7px;border-radius:2px;background:var(--ink);display:block;margin-top:-10px}
+/* The wordmark is drawn as a mask, so it takes the colour of the text around it and stays crisp anywhere. */
+.logo{width:112px;height:20px;background:var(--ink);
+  -webkit-mask:url(brand/coteo-wordmark.png) left center/contain no-repeat;
+  mask:url(brand/coteo-wordmark.png) left center/contain no-repeat}
+.logo i{display:none}
+/* The brand's own gradient, rebuilt from its five anchors. Used on the launch screen and the home header,
+   so starting the app and arriving in it are the same picture. */
+.brandgrad{background-color:#0C3A4A;background-image:
+  radial-gradient(120% 95% at 4% 4%, #6E0B06 0%, rgba(110,11,6,0) 55%),
+  radial-gradient(95% 80% at 44% 8%, #FA4800 0%, rgba(250,72,0,0) 52%),
+  radial-gradient(85% 75% at 92% 10%, #DCEAE8 0%, rgba(220,234,232,0) 55%),
+  radial-gradient(95% 85% at 98% 60%, #1C7F8C 0%, rgba(28,127,140,0) 58%),
+  radial-gradient(110% 95% at 8% 98%, #03111E 0%, rgba(3,17,30,0) 62%)}
 .hbtns{display:flex;gap:8px}
 .ibtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:22px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);color:var(--fg);box-sizing:border-box}
 .ibtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -82,7 +96,7 @@ textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
 /* buttons */
 .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:50px;padding:0 22px;border-radius:12px;font-weight:700;font-size:15.5px;text-align:center;box-sizing:border-box;transition:background .15s}
 .btn.primary{background:var(--ink);color:var(--on-ink)}
-.btn.primary:hover{background:#2A2D33}
+.btn.primary:hover{background:#1B4A54}
 .btn.ghost{background:var(--surface);color:var(--fg);border:1px solid var(--line2)}
 .btn.sm{height:38px;padding:0 15px;font-size:13.5px;border-radius:10px}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
@@ -402,7 +416,7 @@ ol.instr li::marker{color:var(--accent);font-family:var(--f-num)}
 .drawbanner{position:absolute;left:8px;right:8px;top:8px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--glass);border:1px solid var(--accent);font-size:13.5px;font-weight:600;line-height:1.3;pointer-events:none}
 .drawbanner span{flex:1}
 .drawbanner button{all:unset;cursor:pointer;pointer-events:auto;color:var(--accent);font-weight:700;padding:6px 4px}
-.onemeasure{margin:4px 0 0;padding:12px 14px;border-radius:12px;background:color-mix(in srgb,var(--accent) 12%,transparent);font-size:13.5px;line-height:1.45;color:var(--fg)}
+.onemeasure{margin:4px 0 0;padding:12px 14px;border-radius:12px;background:var(--surface2);border-left:3px solid var(--accent);font-size:13.5px;line-height:1.45;color:var(--fg)}
 .onemeasure b{color:var(--accent)}
 .autotag{display:none;font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin-right:6px}
 .cote.auto .autotag{display:inline}
@@ -504,11 +518,14 @@ body.cfg section[data-step]:not([hidden]){animation:none}
 .hero2 img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero2::after{content:"";position:absolute;inset:38% 0 0;background:linear-gradient(180deg,rgba(20,18,15,0),rgba(20,18,15,.78))}
 .herotxt{position:relative;z-index:1;padding:20px;display:flex;flex-direction:column;gap:10px;color:#FFFFFF;width:100%}
+.herologo{width:148px;height:33px;background:#FFFFFF;margin-bottom:2px;
+  -webkit-mask:url(brand/coteo-lockup.png) left center/contain no-repeat;
+  mask:url(brand/coteo-lockup.png) left center/contain no-repeat}
 .herotxt h1{font-size:28px;line-height:1.1;letter-spacing:-.8px;max-width:15ch}
 .herotxt p{font-size:14.5px;opacity:.88;max-width:34ch}
 .herotxt .btn{align-self:stretch;margin-top:6px;background:#FFFFFF;color:var(--ink)}
 .resumebtn{all:unset;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;background:var(--ink);color:var(--on-ink);margin-top:-10px}
-.resumebtn .rdot{flex:none;width:10px;height:10px;border-radius:5px;background:#E9B26B;box-shadow:0 0 0 4px rgba(233,178,107,.25)}
+.resumebtn .rdot{flex:none;width:10px;height:10px;border-radius:5px;background:var(--accent);box-shadow:0 0 0 4px rgba(250,72,0,.28)}
 .resumebtn .rtxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .resumebtn b{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .resumebtn small{font-size:12.5px;opacity:.7}
@@ -594,7 +611,7 @@ body.celledit .coach{display:none}
 .grip:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .gripinfo{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:4;pointer-events:none;white-space:nowrap;
   background:var(--ink);color:var(--on-ink);font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:999px}
-.gripinfo.over{background:#B23B3B}
+.gripinfo.over{background:var(--bad)}
 
 /* Ready-made cabinets only come in a few sizes, so the handle moves in steps. The notches show where it can
    land before the finger gets there, the chip says why, and the note on the proposal says it in words. */
