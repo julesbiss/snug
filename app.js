@@ -3394,6 +3394,10 @@ renderOptions();
 setPhoto(examplePhoto(), true);
 renderZones();
 show(-1);
+/* The build the phone is actually running, printed on the home screen. Three rounds were spent wondering
+   whether a change had arrived at all; now the answer is on screen. */
+const BUILD = 'coteo-v5';
+(() => { const t = $('#buildTag'); if (t) t.textContent = BUILD; })();
 // the first screen is ready: let the launch mark fade out rather than cut
 requestAnimationFrame(() => requestAnimationFrame(() => {
   const b = $('#boot'); if (!b) return; b.style.opacity = '0'; setTimeout(() => b.remove(), 360);
