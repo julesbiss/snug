@@ -712,3 +712,57 @@ body.celledit .coach{display:none}
 .cfgnav button[aria-current="step"] i{background:none;color:var(--accent)}
 
 .buildtag{font-family:var(--f-num);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--line2);text-align:right}
+
+/* ——— Ce qui se voit en premier, dans la voix d'une fiche produit ———
+   Le meuble est posé directement sur la page : plus de plateau gris autour de lui, seulement un filet
+   là où le papier s'arrête. Les cotes, les propositions et l'en-tête parlent la même langue technique
+   que le logo : mono, capitales espacées, un filet par bloc, l'orange réservé à ce qui est choisi. */
+.stage{background:#fff}
+
+/* Tuiles de cotes : les trois dimensions hors tout se lisent comme les mesures d'une fiche produit,
+   chacune sous son propre filet, avec un pictogramme qui dit dans quel sens on mesure. */
+.dims{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:14px;border:none;border-radius:0}
+.dims div{padding:9px 0 0;border-top:1px solid var(--ink);gap:6px}
+.dims div+div{border-left:none}
+.dims .dlab{display:flex;align-items:center;justify-content:space-between;gap:6px;
+  font-family:var(--f-num);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.dims .dlab svg{flex:none;color:var(--line2)}
+.dims b{font-family:var(--f-num);font-size:21px;font-weight:600;letter-spacing:-.6px;line-height:1;
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.dims b i{font-style:normal;font-size:10.5px;font-weight:500;letter-spacing:.06em;color:var(--muted);margin-left:3px}
+
+/* Les trois propositions : des tuiles sous filet, l'orange pour celle qu'on regarde — plus de pavé noir. */
+.variants{column-gap:14px;gap:0}
+.variants button{all:unset;cursor:pointer;box-sizing:border-box;min-height:0;padding:9px 0 0;border:none;
+  border-top:2px solid var(--line);border-radius:0;background:none;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:5px}
+.variants button span{font-family:var(--f-num);font-size:10px;font-weight:600;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted)}
+.variants button b{font-family:var(--f-num);font-size:15px;font-weight:600;letter-spacing:-.2px;
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.variants button[aria-pressed="true"]{background:none;border-top-color:var(--accent)}
+.variants button[aria-pressed="true"] span{color:var(--ink)}
+.variants button[aria-pressed="true"] b{color:var(--accent)}
+.variants button:disabled{opacity:.42;cursor:default}
+.price{font-family:var(--f-num);font-size:40px;font-weight:600;letter-spacing:-2px}
+
+/* En-tête : le titre aligné à gauche, l'étape au-dessus en étiquette technique, comme un numéro de planche. */
+.apptitle{align-items:flex-start;text-align:left;flex-direction:column-reverse;gap:2px}
+.apptitle b{font-size:17px;font-weight:650;letter-spacing:-.3px;color:var(--ink)}
+.apptitle span{font-family:var(--f-num);font-size:10px;font-weight:600;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--teal)}
+
+/* 3D / Chez moi : les mêmes onglets soulignés que le rail des étapes, un seul motif d'onglet dans l'appli. */
+.seg.glass{display:inline-flex;gap:18px;background:none;border:none;padding:0;border-radius:0;
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+.seg.glass button{display:inline-block;min-height:0;padding:0 0 3px;border-radius:0;
+  border-bottom:2px solid transparent;font-family:var(--f-num);font-size:10.5px;font-weight:600;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.seg.glass button[aria-pressed="true"]{background:none;color:var(--ink);border-bottom-color:var(--accent)}
+
+/* Le dessin coté est posé sur le papier, comme une planche : un filet en tête, le dessin, un filet, la
+   légende — plus de carte arrondie autour de lui. */
+.elevbox{padding:11px 0 0;border:none;border-radius:0;border-top:1px solid var(--ink);background:none;gap:8px}
+.elevbox figcaption{padding-top:9px;border-top:1px solid var(--line);font-size:11.5px;line-height:1.45;color:var(--muted)}
+.specs{gap:8px}
+.specs .sublbl{padding-top:11px;border-top:1px solid var(--ink)}

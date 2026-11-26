@@ -1806,6 +1806,14 @@ function linesFor(i) {
   });
   return out;
 }
+// Pictogrammes des cotes : une ligne de cote horizontale, la même verticale, et un volume en perspective.
+// Dessinés au trait, de la même famille que le dessin coté plus bas sur la page.
+const ICO = (d) => `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const DIM_ICO = {
+  w: ICO('<path d="M3 6v12M21 6v12M5 12h14"/><path d="M8 9l-3 3 3 3M16 9l3 3-3 3"/>'),
+  h: ICO('<path d="M6 3h12M6 21h12M12 5v14"/><path d="M9 8l3-3 3 3M9 16l3 3 3-3"/>'),
+  d: ICO('<path d="M4 8.5v9l8 3.5 8-3.5v-9L12 5z"/><path d="M4 8.5l8 3.5 8-3.5M12 12v9"/>'),
+};
 function renderTabs() {
   const tabs = $('#propTabs');
   if (!tabs.children.length) VARIANTS.forEach((v, i) => { const b = document.createElement('button'); b.type = 'button'; b.onclick = () => { if (S.result[i] && S.active !== i) { S.active = i; E.framed = false; S.nstep = 0; S.selCell = null; $('#cellSheet').hidden = true; renderResult(); } }; tabs.appendChild(b); });
@@ -1822,7 +1830,8 @@ function renderResult() {
   $('#pTime').textContent = p.duree || ''; $('#pResume').textContent = p.resume || '';
   const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
   const wTot = Ls.reduce((a, L) => a + L.W, 0), hMax = Math.max(...Ls.map((L) => L.H)), dMax = Math.max(...Ls.map((L) => L.D));
-  $('#pDims').innerHTML = [['Largeur', wTot], ['Hauteur', hMax], ['Prof.', dMax]].map(([k, v]) => `<div><span>${k}</span><b>${R0(v).toLocaleString('fr-FR')}</b></div>`).join('');
+  $('#pDims').innerHTML = [['Largeur', wTot, DIM_ICO.w], ['Hauteur', hMax, DIM_ICO.h], ['Profondeur', dMax, DIM_ICO.d]]
+    .map(([k, v, ico]) => `<div><span class="dlab">${k}${ico}</span><b>${R0(v).toLocaleString('fr-FR')}<i>mm</i></b></div>`).join('');
   $('#pElev').innerHTML = elevationSVG(p);
   renderSpecs(p, S.custom[S.active] || {}, Ls, wTot, hMax, dMax);
   $('#pShops').textContent = `${[...new Set(linesFor(S.active).map((l) => l.enseigne).filter(Boolean))].join(' + ')} · ${Ls.some((L) => L.caissons) ? 'caissons du commerce' : 'panneaux sur mesure'} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`;
@@ -2375,10 +2384,10 @@ function init3D() {
     E.r = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
     E.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     E.r.outputEncoding = THREE.sRGBEncoding; E.r.shadowMap.enabled = true; E.r.shadowMap.type = THREE.PCFSoftShadowMap;
-    E.r.toneMapping = THREE.ACESFilmicToneMapping; E.r.toneMappingExposure = .8; E.r.physicallyCorrectLights = false;
+    E.r.toneMapping = THREE.ACESFilmicToneMapping; E.r.toneMappingExposure = .84; E.r.physicallyCorrectLights = false;
     E.scene = new THREE.Scene(); E.cam = new THREE.PerspectiveCamera(35, 4 / 3, .05, 60);
     E.env = makeEnv(E.r); if (E.env) E.scene.environment = E.env;
-    E.hemi = new THREE.HemisphereLight(0xfffaf2, 0x8a8178, .3); E.scene.add(E.hemi); E.scene.fog = new THREE.Fog(0xDAD5CE, 8, 16);
+    E.hemi = new THREE.HemisphereLight(0xfffaf2, 0x8a8178, .3); E.scene.add(E.hemi); E.scene.fog = new THREE.Fog(0xFFFFFF, 7, 15);
     const spot = new THREE.SpotLight(0xffe7c7, .35, 0, .6, .85, 1); spot.position.set(.4, 3.6, 3.4); spot.target.position.set(0, .3, 0); E.scene.add(spot, spot.target);
     const dl = new THREE.DirectionalLight(0xfff1e0, .95); dl.position.set(-2.2, 3.6, 2.6); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048); dl.shadow.radius = 5; dl.shadow.normalBias = .004;
     Object.assign(dl.shadow.camera, { left: -3.5, right: 3.5, top: 3, bottom: -1, near: .5, far: 12 }); dl.shadow.bias = -0.0008; E.scene.add(dl);
@@ -2390,8 +2399,8 @@ function init3D() {
     /* A cyclorama, not a room: floor and wall are the same near-white and their seam is invisible, so the piece
        sits on paper with nothing but its own shadow under it — the way furniture is photographed for a product
        sheet. The painted wall, the textured floor and the skirting board all said "render of a room" instead. */
-    E.floorMat = new THREE.MeshStandardMaterial({ color: 0xF2F1EE, roughness: .82, envMapIntensity: .28 });
-    E.wallMat = new THREE.MeshStandardMaterial({ color: 0xF8F7F5, roughness: .96, envMapIntensity: .40 });
+    E.floorMat = new THREE.MeshStandardMaterial({ color: 0xF8F7F5, roughness: .82, envMapIntensity: .30 });
+    E.wallMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: .96, envMapIntensity: .46 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), E.floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; E.scene.add(floor);
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), E.wallMat); wall.position.set(0, 2.5, 0); wall.receiveShadow = true; E.scene.add(wall);
     // a pool of light on the wall behind the furniture, the way a product is lit in a studio: it gives the picture depth
@@ -2703,7 +2712,7 @@ function build3D() {
   // shared materials come from the cache and are kept; the see-through copy made for one front is its own
   while (E.root.children.length) { const c = E.root.children.pop(); c.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.userData && o.userData.fadeMat) o.userData.fadeMat.dispose(); }); }
   E.picks = []; E.opens = []; E.cellPicks = []; E.mods = []; REG = null;
-  E.scene.background = lin('#DAD5CE');
+  E.scene.background = lin('#FFFFFF');
   const M = matsFor(cu), feet = feetById(cu.pieds);
   let maxX = 0, maxY = 0, maxD = 0, tvMod = null;
   placeModules(p).forEach((o) => {
@@ -3396,7 +3405,7 @@ renderZones();
 show(-1);
 /* The build the phone is actually running, printed on the home screen. Three rounds were spent wondering
    whether a change had arrived at all; now the answer is on screen. */
-const BUILD = 'coteo-v5';
+const BUILD = 'coteo-v6';
 (() => { const t = $('#buildTag'); if (t) t.textContent = BUILD; })();
 // the first screen is ready: let the launch mark fade out rather than cut
 requestAnimationFrame(() => requestAnimationFrame(() => {
