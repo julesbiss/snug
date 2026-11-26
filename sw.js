@@ -1,6 +1,6 @@
 // COTEO service worker: keeps the app shell available offline and loads fast on repeat visits.
 // Bump VERSION on each release so phones pick up the new files.
-const VERSION = 'coteo-v3';
+const VERSION = 'coteo-v4';
 const SHELL = ['./', 'index.html', 'styles.css', 'engine.js', 'app.js', 'previews/tv.jpg', 'previews/dressing.jpg', 'previews/biblio.jpg', 'previews/escalier.jpg', 'previews/bureau.jpg', 'previews/autre.jpg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'brand/coteo-wordmark.svg', 'brand/coteo-lockup.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'];
 

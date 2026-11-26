@@ -1376,7 +1376,91 @@ function renderSteps(p, Ls) {
     <span>Ce meuble est monté avec des caissons <b>${escH(sysShort(sys))}</b> déjà fabriqués. ${escH(sysShort(sys))} n’existe qu’en <b>${cmList(widths)}</b> de large : en 3D, les flèches ne glissent donc pas au millimètre, elles sautent d’une taille vendue à la suivante. Pour une cote libre, prenez la proposition en panneaux découpés.</span>`;
   el.hidden = false;
 }
+/* The front elevation of the piece, dimensioned — the drawing the whole app is named after. Built from the
+   same plan the 3D is built from, so it can never disagree with it: the outline and the boards as hairlines,
+   then a chain of dimensions under each column and beside each shelf, figures in the mono of the brand.
+   Everything is laid out in millimetres and scaled once, so a 3 m wardrobe and a 60 cm cabinet read alike. */
+function elevationSVG(p) {
+  const mods = (p.modules || []).map((m, mi) => ({ m, L: layoutModule(m, zoneFor(m, mi)) }));
+  if (!mods.length) return '';
+  const GAP = 60;                                            // the gap drawn between two modules
+  const totW = mods.reduce((a, o) => a + o.L.W, 0) + GAP * (mods.length - 1);
+  const totH = Math.max(...mods.map((o) => o.L.H));
+  const U = 1000 / totW;                                     // drawing units per millimetre
+  const ML = 92, MR = 26, MT = 22, MB = 104;                 // room for the dimension chains
+  const X = (mm) => mm * U, Y = (mm) => (totH - mm) * U;     // y counted from the floor up
+  const out = [];
+  const line = (x1, y1, x2, y2, cls) => out.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"${cls ? ` class="${cls}"` : ''}/>`);
+  const rect = (x, y, w, h, cls) => out.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(0, w).toFixed(1)}" height="${Math.max(0, h).toFixed(1)}"${cls ? ` class="${cls}"` : ''}/>`);
+  const txt = (x, y, t, cls) => out.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}"${cls ? ` class="${cls}"` : ''}>${escH(t)}</text>`);
+  const mm = (v) => Math.round(v).toLocaleString('fr-FR');
+  // a dimension line with a tick at each end, the way a drawing marks a size
+  const dimH = (x1, x2, y, label) => {
+    line(x1, y, x2, y, 'dim'); line(x1, y - 9, x1, y + 9, 'dim'); line(x2, y - 9, x2, y + 9, 'dim');
+    txt((x1 + x2) / 2, y - 12, label, 'fig mid');
+  };
+  const dimV = (y1, y2, x, label) => {
+    line(x, y1, x, y2, 'dim'); line(x - 9, y1, x + 9, y1, 'dim'); line(x - 9, y2, x + 9, y2, 'dim');
+    out.push(`<text x="${(x - 14).toFixed(1)}" y="${((y1 + y2) / 2).toFixed(1)}" class="fig end" transform="rotate(-90 ${(x - 14).toFixed(1)} ${((y1 + y2) / 2).toFixed(1)})">${escH(label)}</text>`);
+  };
+  let ox = 0;
+  mods.forEach(({ L }, k) => {
+    const x0 = X(ox);
+    rect(x0, Y(L.H), X(L.W), (L.H - L.legs) * U, 'body');                  // the carcass, outline only
+    if (L.legs > 0) legXs(L).forEach((lx) => rect(x0 + X(lx), Y(L.legs), X(50), L.legs * U, 'board'));
+    L.dividers.forEach((dx) => rect(x0 + X(dx), Y(L.y1), X(L.divT), (L.y1 - L.y0) * U, 'board'));
+    L.shelves.forEach((sh) => rect(x0 + X(sh.x), Y(sh.y + L.t), X(sh.w), L.t * U, 'board'));
+    L.vdivs.forEach((v) => rect(x0 + X(v.x), Y(v.y + v.h), X(L.t), v.h * U, 'board'));
+    rect(x0, Y(L.y1 + L.topT), X(L.W), L.topT * U, 'board');               // the top
+    // a façade is marked the way a drawing marks it: a door by its opening diagonal, a drawer by its pull
+    L.cells.forEach((c) => {
+      const cx = x0 + X(c.x), cy = Y(c.y + c.h), cw = X(c.w), ch = c.h * U;
+      if (c.type === 'porte') { rect(cx + 2, cy + 2, cw - 4, ch - 4, 'face'); line(cx + 2, cy + ch - 2, cx + cw - 2, cy + ch / 2, 'open'); line(cx + 2, cy + 2, cx + cw - 2, cy + ch / 2, 'open'); }
+      else if (c.type === 'tiroir' || c.type === 'caisse') { rect(cx + 2, cy + 2, cw - 4, ch - 4, 'face'); line(cx + cw * .38, cy + ch * .5, cx + cw * .62, cy + ch * .5, 'thin'); }
+      else if (c.type === 'abattant') { rect(cx + 2, cy + 2, cw - 4, ch - 4, 'face'); line(cx + 2, cy + 2, cx + cw / 2, cy + ch - 2, 'open'); line(cx + cw - 2, cy + 2, cx + cw / 2, cy + ch - 2, 'open'); }
+      else if (c.type === 'coulissant' || c.type === 'rainure') { rect(cx + 2, cy + 2, cw - 4, ch - 4, 'face'); line(cx + cw * .2, cy + ch * .5, cx + cw * .8, cy + ch * .5, 'open'); line(cx + cw * .72, cy + ch * .42, cx + cw * .8, cy + ch * .5, 'open'); line(cx + cw * .72, cy + ch * .58, cx + cw * .8, cy + ch * .5, 'open'); }
+      if (c.rod) line(cx + 8, cy + ch * .12, cx + cw - 8, cy + ch * .12, 'thin');
+    });
+    // the width of each column, under the drawing
+    const edges = [0, ...L.dividers.map((d) => d + L.divT / 2), L.W];
+    if (edges.length - 1 <= 5) for (let i = 0; i < edges.length - 1; i++) dimH(x0 + X(edges[i]), x0 + X(edges[i + 1]), Y(0) + 34, mm(edges[i + 1] - edges[i]));
+    ox += L.W + GAP;
+  });
+  // the height of each shelf level of the first column, beside the drawing, then the two overall sizes
+  const L0 = mods[0].L;
+  const lv = [0, ...L0.cells.filter((c) => c.key.startsWith('0-')).map((c) => c.y + c.h)].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+  if (lv.length <= 7) for (let i = 0; i < lv.length - 1; i++) dimV(Y(lv[i]), Y(lv[i + 1]), -34, mm(lv[i + 1] - lv[i]));
+  dimV(Y(0), Y(totH), -74, mm(totH));
+  dimH(0, X(totW), Y(0) + 78, mm(totW));
+  const w = 1000 + ML + MR, h = totH * U + MT + MB;
+  return `<svg class="elev" viewBox="${-ML} ${-MT} ${w} ${h}" role="img" aria-label="Élévation cotée : ${mm(totW)} × ${mm(totH)} mm">${out.join('')}</svg>`;
+}
+/* The plan read as a product sheet: one row per fact, label left, value right, hairline between. It replaces
+   a paragraph of prose that said less and could not be scanned. */
+function renderSpecs(p, cu, Ls, wTot, hMax, dMax) {
+  if (!cu || !cu.structure) { $('#pSpecs').innerHTML = ''; return; }
+  const N = S.notice || noticeFor(p, cu);
+  const hw = Object.keys(N.hw || {}).filter((k) => N.hw[k]).length;
+  const shops = [...new Set(linesFor(S.active).map((l) => l.enseigne).filter(Boolean))].join(', ');
+  const fin = (id) => finById(id).nom;
+  const rows = [
+    ['Cotes hors tout', `${R0(wTot).toLocaleString('fr-FR')} × ${R0(hMax).toLocaleString('fr-FR')} × ${R0(dMax).toLocaleString('fr-FR')} mm`],
+    ['Fabrication', Ls.some((L) => L.caissons) ? 'Caissons du commerce' : 'Panneaux découpés aux cotes'],
+    ['Structure', fin(cu.structure)],
+    ['Façades', N.parts.some((x) => x.role === 'facade') ? fin(cu.facades) : '—'],
+    ['Plateau', fin(cu.plateau)],
+    ['Poignées', `${handleById(cu.poignee).nom}, ${hfinById(cu.hfin).nom.toLowerCase()}`],
+    ['Pieds', feetById(cu.pieds).nom],
+    ['Pièces à monter', `${N.parts.length}`],
+    ['Quincaillerie', `${hw} repère${hw > 1 ? 's' : ''}`],
+    ['Montage', [p.duree, ['Facile', 'Moyen', 'Avancé'][clamp(Math.round(+p.difficulte || 2), 1, 3) - 1]].filter(Boolean).join(' · ')],
+    ['Enseignes', shops || '—'],
+  ];
+  $('#pSpecs').innerHTML = rows.map(([k, v]) => `<div class="specrow"><span>${escH(k)}</span><b>${escH(String(v))}</b></div>`).join('');
+}
 function renderWarn(p) {
+
+
   const el = $('#pWarn'); el.innerHTML = ''; el.hidden = !p.attention;
   if (!p.attention) return;
   const fix = Array.isArray(p.caissonFix) ? p.caissonFix : [];
@@ -1739,6 +1823,8 @@ function renderResult() {
   const Ls = p.modules.map((m, mi) => layoutModule(m, zoneFor(m, mi)));
   const wTot = Ls.reduce((a, L) => a + L.W, 0), hMax = Math.max(...Ls.map((L) => L.H)), dMax = Math.max(...Ls.map((L) => L.D));
   $('#pDims').innerHTML = [['Largeur', wTot], ['Hauteur', hMax], ['Prof.', dMax]].map(([k, v]) => `<div><span>${k}</span><b>${R0(v).toLocaleString('fr-FR')}</b></div>`).join('');
+  $('#pElev').innerHTML = elevationSVG(p);
+  renderSpecs(p, S.custom[S.active] || {}, Ls, wTot, hMax, dMax);
   $('#pShops').textContent = `${[...new Set(linesFor(S.active).map((l) => l.enseigne).filter(Boolean))].join(' + ')} · ${Ls.some((L) => L.caissons) ? 'caissons du commerce' : 'panneaux sur mesure'} · ${Ls.map((L) => `${R0(L.W)} × ${R0(L.H)} × ${R0(L.D)} mm`).join(', ')}`;
   renderSteps(p, Ls);
   const det = Ls.flatMap((L) => L.details).map((x) => x.type === 'passe_cable' ? `passe-câble Ø ${x.dia} mm (${x.face === 'plateau' ? 'plateau' : 'dos'})` : x.type === 'aeration' ? 'aération à l’arrière' : 'fixation anti-basculement');
@@ -2301,13 +2387,15 @@ function init3D() {
     const sky = new THREE.DirectionalLight(0xf7f4ef, 0); sky.castShadow = true; sky.shadow.mapSize.set(1024, 1024); sky.shadow.bias = -0.0012; sky.shadow.normalBias = .006;
     Object.assign(sky.shadow.camera, { left: -3.5, right: 3.5, top: 3.5, bottom: -3.5, near: .5, far: 14 }); E.scene.add(sky, sky.target); E.sky = sky; E.acc = accInit(E.r);
     const tx = (c, rep) => { const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.anisotropy = 8; return t; };
-    E.floorMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [10, 10]), color: 0xA8A198, roughness: .55, envMapIntensity: .22 });
-    E.wallMat = new THREE.MeshStandardMaterial({ map: tx(plasterCanvas(), [6, 2]), color: 0xE2DDD6, roughness: .95, envMapIntensity: .35 });
+    /* A cyclorama, not a room: floor and wall are the same near-white and their seam is invisible, so the piece
+       sits on paper with nothing but its own shadow under it — the way furniture is photographed for a product
+       sheet. The painted wall, the textured floor and the skirting board all said "render of a room" instead. */
+    E.floorMat = new THREE.MeshStandardMaterial({ color: 0xF2F1EE, roughness: .82, envMapIntensity: .28 });
+    E.wallMat = new THREE.MeshStandardMaterial({ color: 0xF8F7F5, roughness: .96, envMapIntensity: .40 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), E.floorMat); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; E.scene.add(floor);
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), E.wallMat); wall.position.set(0, 2.5, 0); wall.receiveShadow = true; E.scene.add(wall);
-    const sk = new THREE.Mesh(new THREE.BoxGeometry(14, .07, .012), new THREE.MeshStandardMaterial({ color: 0xF1EEE9, roughness: .5 })); sk.position.set(0, .035, .006); sk.receiveShadow = true; sk.castShadow = true; E.scene.add(sk);
     // a pool of light on the wall behind the furniture, the way a product is lit in a studio: it gives the picture depth
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(7, 4.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(haloCanvas()), transparent: true, opacity: .5, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(7, 4.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(haloCanvas()), transparent: true, opacity: .34, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
     halo.position.set(0, 1.5, .004); E.scene.add(halo);
     E.root = new THREE.Group(); E.root.scale.setScalar(.001); E.scene.add(E.root);
     E.orbit = { theta: .32, phi: 1.2, r: 4, target: new THREE.Vector3(0, .3, .2) }; E.ray = new THREE.Raycaster();

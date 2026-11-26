@@ -4,7 +4,7 @@
    The four colours come straight from the brand sheet: petrol #11363E, orange #FA4800, teal #367072,
    greige #C8BEB5; the greys below are tints of those two neutrals rather than plain grey. */
 :root{
-  --bg:#F5F3F0; --surface:#FFFFFF; --surface2:#F2EFEB; --line:#E5E0D9; --line2:#D2CAC0;
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface2:#F4F2EF; --line:#E7E2DB; --line2:#D2CAC0;
   --fg:#11363E; --soft-fg:#3D5B63; --muted:#78898D;
   --accent:#FA4800; --accent-hi:#C63800; --accent-soft:rgba(250,72,0,.10); --on-accent:#FFFFFF;
   --ink:#11363E; --on-ink:#FFFFFF;
@@ -176,10 +176,10 @@ textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px}
 /* result: stage */
 .cfgtop{position:relative;background:var(--bg);display:flex;flex-direction:column;gap:12px;margin-left:calc(-1 * max(18px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(18px,env(safe-area-inset-right,0px)));min-width:0}
 .stagewrap{position:relative}
-.stage{position:relative;overflow:hidden;background:#DED7CE}
+.stage{position:relative;overflow:hidden;background:#F6F5F2}
 .stage canvas{display:block;width:100%;touch-action:none;cursor:grab}
 .stagewrap::after{content:"";position:absolute;inset:auto 0 0;height:70px;background:linear-gradient(180deg,rgba(244,242,238,0),var(--bg));pointer-events:none}
-#stagePhoto{border-radius:0;border:none;background:#DED7CE}
+#stagePhoto{border-radius:0;border:none;background:#E8E3DC}
 #stagePhoto canvas{max-height:min(420px,48vh);width:auto;max-width:100%;margin:0 auto}
 .overlay{position:absolute;left:14px;right:14px;display:flex;align-items:center;gap:8px;z-index:2}
 .overlay.top{top:12px}
@@ -665,3 +665,26 @@ body.celledit .coach{display:none}
 /* Inside one tab, a heavier rule where the subject changes: the shape of the case, then what goes in it. */
 .celldock .chsep{margin:14px 0 -2px;padding-top:14px;border-top:1px solid var(--line);
   font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+
+/* The dimensioned elevation: a drawing, so hairlines whatever the zoom, and figures in the mono of the brand. */
+.elevbox{margin:0;padding:16px 14px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);
+  display:flex;flex-direction:column;gap:10px}
+.elevbox figcaption{font-size:11.5px;line-height:1.4;color:var(--muted)}
+.elev{display:block;width:100%;height:auto;overflow:visible}
+.elev line,.elev rect{vector-effect:non-scaling-stroke;fill:none;stroke:var(--ink)}
+.elev rect.body{stroke-width:1.6}
+.elev rect.board{fill:rgba(17,54,62,.07);stroke-width:1}
+.elev rect.face{fill:none;stroke:var(--line2);stroke-width:1}
+.elev line.thin{stroke:var(--line2);stroke-width:1}
+.elev line.open{stroke:var(--teal);stroke-width:1;opacity:.55}
+.elev line.dim{stroke:var(--accent);stroke-width:1}
+.elev text.fig{fill:var(--accent);font-family:var(--f-num);font-size:30px;font-weight:600;letter-spacing:.03em}
+.elev text.mid{text-anchor:middle}
+.elev text.end{text-anchor:middle}
+
+/* The spec sheet: one fact per line, hairline between, label in the technical voice and value in mono. */
+.specs{display:flex;flex-direction:column;gap:10px}
+.specrow{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line)}
+.specrow:first-child{border-top:none}
+.specrow span{font-size:12.5px;color:var(--muted)}
+.specrow b{font-family:var(--f-num);font-size:12.5px;font-weight:600;color:var(--fg);text-align:right;word-break:break-word}
